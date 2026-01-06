@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../providers/user_provider.dart';
-import '../main.dart'; // To navigate to Dashboard after saving
+import '../main.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   const ProfileSetupScreen({super.key});
@@ -12,18 +14,18 @@ class ProfileSetupScreen extends StatefulWidget {
 
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   // --- Controllers for Input Fields ---
-  final _nameController = TextEditingController(); // [cite: 9]
-  final _heightController = TextEditingController(); // [cite: 11]
-  final _weightController = TextEditingController(); // [cite: 12]
-  final _neckController = TextEditingController(); // [cite: 14]
-  final _waistController = TextEditingController(); // [cite: 15]
-  final _hipController = TextEditingController(); // [cite: 16]
+  final _nameController = TextEditingController();
+  final _heightController = TextEditingController();
+  final _weightController = TextEditingController();
+  final _neckController = TextEditingController();
+  final _waistController = TextEditingController();
+  final _hipController = TextEditingController();
+  final _abdomenController = TextEditingController();
 
-  // Default values
-  String _selectedGender = 'male'; // [cite: 10]
-  String _selectedActivity = 'Moderate'; // [cite: 18]
+  String _selectedGender = 'male';
+  String _selectedActivity = 'Moderate';
 
-  // Activity Level Options
+  // Activity Levels matching Wireframe
   final List<String> _activityLevels = [
     'Sedentary',
     'Light',
@@ -34,91 +36,107 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   @override
   void dispose() {
-    // Clean up controllers when the widget is removed
     _nameController.dispose();
     _heightController.dispose();
     _weightController.dispose();
     _neckController.dispose();
     _waistController.dispose();
     _hipController.dispose();
+    _abdomenController.dispose();
     super.dispose();
   }
 
-  // --- Logic to Save Data ---
-  void _saveAndContinue() {
+  Future<void> _saveAndContinue() async {
     // 1. Basic Validation
-    if (_heightController.text.isEmpty ||
-        _weightController.text.isEmpty ||
-        _waistController.text.isEmpty ||
-        _neckController.text.isEmpty) {
+    if (_heightController.text.isEmpty || _weightController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please fill in all measurements to calculate Body Fat."),
-          backgroundColor: Colors.red,
-        ),
+        const SnackBar(content: Text("Height and Weight are required!")),
       );
       return;
     }
 
-    // 2. Helper function to convert Text to Double
-    double parse(String text) {
-      return double.tryParse(text) ?? 0.0;
-    }
+    double parse(String text) => double.tryParse(text) ?? 0.0;
 
-    // 3. Save data to UserProvider (Global State)
+    // 2. Update Provider (Local State)
     final userProvider = Provider.of<UserProvider>(context, listen: false);
 
-    // Update the main profile data
+    // Logic: Navy Formula uses Abdomen for Men, Waist for Women.
+    // We save both if entered, but use the correct one for calculation.
+    double relevantWaist = (_selectedGender == 'male')
+        ? parse(_abdomenController.text)
+        : parse(_waistController.text);
+
     userProvider.updateProfile(
       w: parse(_weightController.text),
       h: parse(_heightController.text),
       n: parse(_neckController.text),
-      waistVal: parse(_waistController.text),
+      waistVal: relevantWaist,
     );
-
-    // Update remaining fields manually
     userProvider.name = _nameController.text;
     userProvider.gender = _selectedGender;
-    userProvider.hip = parse(_hipController.text);
     userProvider.activityLevel = _selectedActivity;
 
-    // 4. Navigate to the Dashboard (Main App)
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const MainScaffold()),
-          (route) => false, // This removes the back button history
-    );
+    // 3. Save to Firebase
+    try {
+      showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (c) => const Center(child: CircularProgressIndicator())
+      );
+
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).set({
+          'name': _nameController.text,
+          'email': currentUser.email,
+          'gender': _selectedGender,
+          'height': parse(_heightController.text),
+          'weight': parse(_weightController.text),
+          'neck': parse(_neckController.text),
+          'waist': parse(_waistController.text),
+          'hip': parse(_hipController.text),
+          'abdomen': parse(_abdomenController.text), // Added as per wireframe
+          'activityLevel': _selectedActivity,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      if (mounted) Navigator.of(context).pop(); // Close spinner
+
+      // 4. Navigate to Dashboard
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const MainScaffold()),
+            (route) => false,
+      );
+
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error saving profile: $e")),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Setup Profile"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text("Setup Profile")),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              "Welcome!",
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                "Complete your details",
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)
             ),
-            const Text(
-              "Let's create your health profile.",
-              style: TextStyle(color: Colors.grey, fontSize: 16),
-            ),
-            const SizedBox(height: 25),
+            const SizedBox(height: 20),
 
-            // --- SECTION 1: PERSONAL DETAILS ---
-            const Text("Personal Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepPurple)),
+            // --- PERSONAL DETAILS ---
+            _buildSectionHeader("Personal Details"),
+            _buildTextField("Display Name", _nameController, icon: Icons.person),
             const SizedBox(height: 15),
 
-            _buildTextField("Display Name", _nameController, icon: Icons.person), // [cite: 9]
-            const SizedBox(height: 15),
-
-            // Gender Dropdown [cite: 10]
             DropdownButtonFormField<String>(
               value: _selectedGender,
               decoration: const InputDecoration(
@@ -126,57 +144,47 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.wc),
               ),
-              items: ['male', 'female']
-                  .map((g) => DropdownMenuItem(
-                value: g,
-                child: Text(g.toUpperCase()),
-              ))
-                  .toList(),
+              items: ['male', 'female'].map((g) => DropdownMenuItem(value: g, child: Text(g.toUpperCase()))).toList(),
               onChanged: (val) => setState(() => _selectedGender = val!),
             ),
             const SizedBox(height: 15),
 
-            // Height and Weight Row [cite: 11, 12]
             Row(
               children: [
-                Expanded(child: _buildTextField("Height (cm)", _heightController, isNumber: true)),
+                Expanded(child: _buildTextField("Height (cm)", _heightController, isNum: true)),
                 const SizedBox(width: 15),
-                Expanded(child: _buildTextField("Weight (kg)", _weightController, isNumber: true)),
+                Expanded(child: _buildTextField("Weight (kg)", _weightController, isNum: true)),
               ],
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 25),
 
-            // --- SECTION 2: BODY MEASUREMENTS ---
-            const Text("Body Measurements", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepPurple)), // [cite: 13]
-            const Text("Required for US Navy Body Fat Formula", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            // --- BODY MEASUREMENTS (Wireframe Item 13) ---
+            _buildSectionHeader("Body Measurement"),
+
+            _buildTextField("Neck (cm)", _neckController, isNum: true),
             const SizedBox(height: 15),
-
-            _buildTextField("Neck Circumference (cm)", _neckController, isNumber: true), // [cite: 14]
+            _buildTextField("Waist (cm)", _waistController, isNum: true),
             const SizedBox(height: 15),
-
-            // Note: For men, Waist usually refers to Abdomen circumference
-            _buildTextField("Waist / Abdomen (cm)", _waistController, isNumber: true), // [cite: 15, 17]
+            _buildTextField("Hip (cm)", _hipController, isNum: true),
             const SizedBox(height: 15),
+            _buildTextField("Abdomen (cm)", _abdomenController, isNum: true), // Matches Wireframe Item 17
 
-            _buildTextField("Hip Circumference (cm)", _hipController, isNumber: true), // [cite: 16]
-            const SizedBox(height: 30),
+            const SizedBox(height: 25),
 
-            // --- SECTION 3: LIFESTYLE ---
-            const Text("Lifestyle", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepPurple)), // [cite: 18]
-            const SizedBox(height: 15),
+            // --- LIFESTYLE (Wireframe Item 18) ---
+            _buildSectionHeader("Lifestyle Activity Level"),
 
             DropdownButtonFormField<String>(
               value: _selectedActivity,
               decoration: const InputDecoration(
                 labelText: "Activity Level",
                 border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.run_circle_outlined),
+                prefixIcon: Icon(Icons.directions_run),
               ),
-              items: _activityLevels
-                  .map((l) => DropdownMenuItem(value: l, child: Text(l)))
-                  .toList(),
+              items: _activityLevels.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
               onChanged: (val) => setState(() => _selectedActivity = val!),
             ),
+
             const SizedBox(height: 40),
 
             // --- SAVE BUTTON ---
@@ -188,11 +196,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   backgroundColor: Colors.deepPurple,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                child: const Text("Calculate & Start", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                child: const Text("Calculate & Continue", style: TextStyle(fontSize: 18)),
               ),
             ),
           ],
@@ -201,12 +207,20 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
-  // Helper widget to build text fields quickly
-  Widget _buildTextField(String label, TextEditingController controller,
-      {bool isNumber = false, IconData? icon}) {
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15.0),
+      child: Text(
+        title,
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.deepPurple),
+      ),
+    );
+  }
+
+  Widget _buildTextField(String label, TextEditingController controller, {bool isNum = false, IconData? icon}) {
     return TextField(
       controller: controller,
-      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      keyboardType: isNum ? TextInputType.number : TextInputType.text,
       decoration: InputDecoration(
         labelText: label,
         border: const OutlineInputBorder(),

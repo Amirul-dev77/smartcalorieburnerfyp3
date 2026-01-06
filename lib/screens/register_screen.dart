@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'profile_setup_screen.dart'; // <--- THIS IMPORT FIXES THE ERROR
-import 'login_screen.dart'; // To go back to Login if needed
+import 'package:firebase_auth/firebase_auth.dart';
+import 'profile_setup_screen.dart'; // Navigate here on success
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -10,7 +10,6 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  // Controllers to capture user input
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -25,117 +24,92 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _handleRegister() {
+  Future<void> _handleRegister() async {
     // 1. Basic Validation
     if (_nameController.text.isEmpty || _emailController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please fill in all fields")),
-      );
+          const SnackBar(content: Text("Please fill in all fields")));
       return;
     }
-
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Passwords do not match!")),
-      );
+          const SnackBar(content: Text("Passwords do not match!")));
       return;
     }
 
-    // 2. Navigation to Profile Setup (Module 2)
-    // We use pushReplacement so the user can't go "back" to the register screen
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
-    );
+    // 2. Firebase Registration
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (c) => const Center(child: CircularProgressIndicator()),
+      );
+
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      if (mounted) Navigator.of(context).pop(); // Close spinner
+
+      // 3. Navigate to Profile Setup
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: ${e.message}"), backgroundColor: Colors.red),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text("Create Account"),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          // Go back to Login Screen
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                "Sign Up",
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text("Please fill in the details to create an account."),
-              const SizedBox(height: 30),
+      appBar: AppBar(title: const Text("Create Account")),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          children: [
+            const Icon(Icons.person_add, size: 60, color: Colors.deepPurple),
+            const SizedBox(height: 20),
 
-              // Name Input
-              _buildTextField("Full Name", Icons.person, _nameController),
-              const SizedBox(height: 16),
+            _buildTextField("Full Name", _nameController, false),
+            const SizedBox(height: 15),
+            _buildTextField("Email", _emailController, false),
+            const SizedBox(height: 15),
+            _buildTextField("Password", _passwordController, true),
+            const SizedBox(height: 15),
+            _buildTextField("Confirm Password", _confirmPasswordController, true),
+            const SizedBox(height: 30),
 
-              // Email Input
-              _buildTextField("Email", Icons.email_outlined, _emailController),
-              const SizedBox(height: 16),
-
-              // Password Input
-              _buildTextField("Password", Icons.lock_outline, _passwordController, isPassword: true),
-              const SizedBox(height: 16),
-
-              // Confirm Password
-              _buildTextField("Confirm Password", Icons.lock_outline, _confirmPasswordController, isPassword: true),
-              const SizedBox(height: 30),
-
-              // Register Button
-              ElevatedButton(
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
                 onPressed: _handleRegister,
                 style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   backgroundColor: Colors.deepPurple,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
                 ),
-                child: const Text("Register", style: TextStyle(fontSize: 16)),
+                child: const Text("Register"),
               ),
-
-              const SizedBox(height: 20),
-
-              // Login Link (Go back to Login)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text("Already have an account?"),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                    child: const Text("Login"),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  // Helper widget to keep code clean
-  Widget _buildTextField(String label, IconData icon, TextEditingController controller, {bool isPassword = false}) {
+  Widget _buildTextField(String label, TextEditingController controller, bool isPass) {
     return TextField(
       controller: controller,
-      obscureText: isPassword,
+      obscureText: isPass,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon),
         border: const OutlineInputBorder(),
       ),
     );

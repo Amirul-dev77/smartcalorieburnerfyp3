@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "264954755740",
+    "project_id": "smartcalorieburner3",
+    "storage_bucket": "smartcalorieburner3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:264954755740:android:136a69afb1f8a9bb5acb59",
+        "android_client_info": {
+          "package_name": "com.example.smartcalorieburnerfyp3"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCSnMawSLLSZCH2RT1Sy__ERTOa0WzKd8U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
