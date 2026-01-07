@@ -1,6 +1,6 @@
 # smartcalorieburnerfyp3
 
-A new Flutter project.
+My final year Project for web technology course under computer science faculty.
 
 ## Getting Started
 
