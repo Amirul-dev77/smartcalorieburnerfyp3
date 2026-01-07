@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'register_screen.dart'; // To navigate to registration
-import '../main.dart'; // To navigate to Dashboard (MainScaffold)
+import 'package:provider/provider.dart';
+import 'register_screen.dart';
+import '../main.dart'; // To access MainScaffold
+import '../providers/user_provider.dart'; // To access fetchUserData
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  // --- LOGIN LOGIC ---
   Future<void> _handleLogin() async {
     // 1. Show loading spinner
     showDialog(
@@ -36,10 +39,16 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text.trim(),
       );
 
-      // 3. Remove spinner
+      // 3. FETCH USER DATA IMMEDIATELY
+      if (mounted) {
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
+        await userProvider.fetchUserData();
+      }
+
+      // 4. Close spinner
       if (mounted) Navigator.of(context).pop();
 
-      // 4. Navigate to Dashboard (MainScaffold)
+      // 5. Navigate to Dashboard (MainScaffold)
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const MainScaffold()),
@@ -60,6 +69,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
       );
     }
   }
