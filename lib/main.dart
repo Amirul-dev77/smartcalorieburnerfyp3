@@ -7,6 +7,7 @@ import 'firebase_options.dart';
 import 'providers/user_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/calendar_screen.dart'; // <--- NEW IMPORT ADDED HERE
 
 // --- 1. APP ENTRY POINT ---
 void main() async {
@@ -41,6 +42,7 @@ class SmartCalorieApp extends StatelessWidget {
   }
 }
 
+// --- 2. AUTH WRAPPER (Auto-Login & Data Fetch) ---
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -52,6 +54,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   void initState() {
     super.initState();
+    // Fetch data immediately if user is already logged in
     Future.microtask(() {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -62,15 +65,17 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   Widget build(BuildContext context) {
+    // Check if user is logged in
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      return const MainScaffold();
+      return const MainScaffold(); // Logged in? Go to Dashboard
     } else {
-      return const LoginScreen();
+      return const LoginScreen(); // Not logged in? Go to Login
     }
   }
 }
 
+// --- 3. MAIN SCAFFOLD (Bottom Navigation) ---
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
 
@@ -79,14 +84,14 @@ class MainScaffold extends StatefulWidget {
 }
 
 class _MainScaffoldState extends State<MainScaffold> {
-  int _selectedIndex = 1;
+  int _selectedIndex = 1; // Default to Dashboard (BMI)
 
   final List<Widget> _screens = [
-    const ProfileScreen(),
-    const DashboardTab(),
-    const PlaceholderWidget(text: "Calorie Tracker"),
-    const PlaceholderWidget(text: "Workout Page"),
-    const PlaceholderWidget(text: "Calendar Page"),
+    const ProfileScreen(),             // 0: Profile
+    const DashboardTab(),              // 1: BMI / Dashboard
+    const PlaceholderWidget(text: "Calorie Tracker"), // 2: Calorie
+    const PlaceholderWidget(text: "Workout Page"),    // 3: Workout
+    const CalendarScreen(),            // 4: Calendar (UPDATED!)
   ];
 
   void _onItemTapped(int index) {
@@ -134,7 +139,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 }
 
-// --- UPDATED DASHBOARD (Showing Clear Categories) ---
+// --- 4. DASHBOARD TAB (BMI Page with Categories) ---
 class DashboardTab extends StatelessWidget {
   const DashboardTab({super.key});
 
@@ -190,16 +195,16 @@ class DashboardTab extends StatelessWidget {
                         style: const TextStyle(fontSize: 55, fontWeight: FontWeight.bold, color: Colors.white),
                       ),
 
-                      // DYNAMIC CATEGORY DISPLAY
+                      // DYNAMIC CATEGORY LABEL
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: user.statusColor.withOpacity(0.2), // Dynamic color
+                          color: user.statusColor.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: user.statusColor, width: 1.5),
                         ),
                         child: Text(
-                          user.bmiCategory.toUpperCase(), // "NORMAL", "OVERWEIGHT" etc.
+                          user.bmiCategory.toUpperCase(),
                           style: TextStyle(
                               color: user.statusColor,
                               fontWeight: FontWeight.bold,
@@ -210,7 +215,7 @@ class DashboardTab extends StatelessWidget {
 
                       const SizedBox(height: 15),
 
-                      // BODY FAT DISPLAY
+                      // BODY FAT VALUE
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
@@ -242,13 +247,13 @@ class DashboardTab extends StatelessWidget {
                 child: Column(
                   children: [
                     _buildRow("BMI Formula", "Weight(kg) / Height(m)²"),
-                    _buildRow("Your Category", user.bmiCategory, isHighlight: true), // CLEARLY SHOWS CATEGORY
+                    _buildRow("Your Category", user.bmiCategory, isHighlight: true),
                     const Divider(height: 20),
 
                     const Text("BMI Categories Reference", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                     const SizedBox(height: 10),
 
-                    // The table highlights the user's current row
+                    // Table highlights user's category
                     _buildCategoryRow("Underweight", "< 18.5", Colors.blue, user.bmiCategory == "Underweight"),
                     _buildCategoryRow("Normal", "18.5 - 24.9", Colors.green, user.bmiCategory == "Normal"),
                     _buildCategoryRow("Overweight", "25 - 29.9", Colors.orange, user.bmiCategory == "Overweight"),
@@ -271,7 +276,7 @@ class DashboardTab extends StatelessWidget {
                 child: Column(
                   children: [
                     _buildRow("Method", "US Navy Method"),
-                    _buildRow("Your Category", user.bodyFatCategory, isHighlight: true), // CLEARLY SHOWS CATEGORY
+                    _buildRow("Your Category", user.bodyFatCategory, isHighlight: true),
                     const Divider(height: 20),
 
                     Text("Body Fat Categories Reference (${isMale ? 'Men' : 'Women'})",
@@ -302,6 +307,7 @@ class DashboardTab extends StatelessWidget {
     );
   }
 
+  // --- Helper Widgets ---
   Widget _buildRow(String label, String value, {bool isHighlight = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
@@ -313,7 +319,7 @@ class DashboardTab extends StatelessWidget {
               value,
               style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: isHighlight ? Colors.deepPurple : Colors.black, // Purple if it's the "Your Category" line
+                  color: isHighlight ? Colors.deepPurple : Colors.black,
                   fontSize: isHighlight ? 16 : 14
               )
           ),
@@ -326,7 +332,7 @@ class DashboardTab extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
       decoration: isActive ? BoxDecoration(
-          color: color.withOpacity(0.1), // Highlight background if this is the user's category
+          color: color.withOpacity(0.1),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: color.withOpacity(0.5))
       ) : null,
@@ -339,7 +345,7 @@ class DashboardTab extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                   label,
-                  style: TextStyle(fontWeight: isActive ? FontWeight.bold : FontWeight.normal) // Bold if active
+                  style: TextStyle(fontWeight: isActive ? FontWeight.bold : FontWeight.normal)
               ),
             ],
           ),
