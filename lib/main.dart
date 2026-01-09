@@ -7,7 +7,8 @@ import 'firebase_options.dart';
 import 'providers/user_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
-import 'screens/calendar_screen.dart'; // <--- NEW IMPORT ADDED HERE
+import 'screens/calendar_screen.dart';
+import 'screens/calorie_screen.dart'; // <--- NEW IMPORT ADDED HERE
 
 // --- 1. APP ENTRY POINT ---
 void main() async {
@@ -89,9 +90,9 @@ class _MainScaffoldState extends State<MainScaffold> {
   final List<Widget> _screens = [
     const ProfileScreen(),             // 0: Profile
     const DashboardTab(),              // 1: BMI / Dashboard
-    const PlaceholderWidget(text: "Calorie Tracker"), // 2: Calorie
+    const CalorieScreen(),             // 2: Calorie (UPDATED!)
     const PlaceholderWidget(text: "Workout Page"),    // 3: Workout
-    const CalendarScreen(),            // 4: Calendar (UPDATED!)
+    const CalendarScreen(),            // 4: Calendar
   ];
 
   void _onItemTapped(int index) {
@@ -154,7 +155,7 @@ class DashboardTab extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text("Welcome back,", style: TextStyle(fontSize: 14, color: Colors.grey)),
-            Text("Hi, ${user.name}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Text(user.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           ],
         ),
         centerTitle: false,
