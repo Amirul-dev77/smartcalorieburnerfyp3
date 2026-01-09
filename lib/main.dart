@@ -8,9 +8,10 @@ import 'providers/user_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/calendar_screen.dart';
-import 'screens/calorie_screen.dart'; // <--- NEW IMPORT ADDED HERE
+import 'screens/calorie_screen.dart';
+import 'screens/workout_screen.dart'; // <--- 1. NEW IMPORT ADDED
 
-// --- 1. APP ENTRY POINT ---
+// --- APP ENTRY POINT ---
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -43,7 +44,7 @@ class SmartCalorieApp extends StatelessWidget {
   }
 }
 
-// --- 2. AUTH WRAPPER (Auto-Login & Data Fetch) ---
+// --- AUTH WRAPPER ---
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -55,7 +56,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   void initState() {
     super.initState();
-    // Fetch data immediately if user is already logged in
     Future.microtask(() {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -66,17 +66,16 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    // Check if user is logged in
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      return const MainScaffold(); // Logged in? Go to Dashboard
+      return const MainScaffold();
     } else {
-      return const LoginScreen(); // Not logged in? Go to Login
+      return const LoginScreen();
     }
   }
 }
 
-// --- 3. MAIN SCAFFOLD (Bottom Navigation) ---
+// --- MAIN SCAFFOLD ---
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
 
@@ -88,11 +87,11 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 1; // Default to Dashboard (BMI)
 
   final List<Widget> _screens = [
-    const ProfileScreen(),             // 0: Profile
-    const DashboardTab(),              // 1: BMI / Dashboard
-    const CalorieScreen(),             // 2: Calorie (UPDATED!)
-    const PlaceholderWidget(text: "Workout Page"),    // 3: Workout
-    const CalendarScreen(),            // 4: Calendar
+    const ProfileScreen(),
+    const DashboardTab(),
+    const CalorieScreen(),
+    const WorkoutScreen(),             // <--- 2. UPDATED: Uses the real screen now!
+    const CalendarScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -140,7 +139,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 }
 
-// --- 4. DASHBOARD TAB (BMI Page with Categories) ---
+// --- DASHBOARD TAB (BMI Page) ---
 class DashboardTab extends StatelessWidget {
   const DashboardTab({super.key});
 
@@ -168,7 +167,7 @@ class DashboardTab extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- A. MAIN BMI & BODY FAT CARD ---
+            // BMI CARD
             Container(
               padding: const EdgeInsets.all(25),
               decoration: BoxDecoration(
@@ -189,14 +188,10 @@ class DashboardTab extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text("YOUR BMI", style: TextStyle(color: Colors.white70, fontSize: 14, letterSpacing: 1.5)),
-
-                      // BIG BMI VALUE
                       Text(
                         user.bmi.toStringAsFixed(1),
                         style: const TextStyle(fontSize: 55, fontWeight: FontWeight.bold, color: Colors.white),
                       ),
-
-                      // DYNAMIC CATEGORY LABEL
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
@@ -213,10 +208,7 @@ class DashboardTab extends StatelessWidget {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 15),
-
-                      // BODY FAT VALUE
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
@@ -236,7 +228,7 @@ class DashboardTab extends StatelessWidget {
             ),
             const SizedBox(height: 25),
 
-            // --- B. BMI INFO CARD ---
+            // BMI DETAILS
             const Text("BMI Details", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             Card(
@@ -250,11 +242,8 @@ class DashboardTab extends StatelessWidget {
                     _buildRow("BMI Formula", "Weight(kg) / Height(m)²"),
                     _buildRow("Your Category", user.bmiCategory, isHighlight: true),
                     const Divider(height: 20),
-
                     const Text("BMI Categories Reference", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                     const SizedBox(height: 10),
-
-                    // Table highlights user's category
                     _buildCategoryRow("Underweight", "< 18.5", Colors.blue, user.bmiCategory == "Underweight"),
                     _buildCategoryRow("Normal", "18.5 - 24.9", Colors.green, user.bmiCategory == "Normal"),
                     _buildCategoryRow("Overweight", "25 - 29.9", Colors.orange, user.bmiCategory == "Overweight"),
@@ -265,7 +254,7 @@ class DashboardTab extends StatelessWidget {
             ),
             const SizedBox(height: 25),
 
-            // --- C. BODY FAT INFO CARD ---
+            // BODY FAT DETAILS
             const Text("Body Fat Details", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             Card(
@@ -279,11 +268,9 @@ class DashboardTab extends StatelessWidget {
                     _buildRow("Method", "US Navy Method"),
                     _buildRow("Your Category", user.bodyFatCategory, isHighlight: true),
                     const Divider(height: 20),
-
                     Text("Body Fat Categories Reference (${isMale ? 'Men' : 'Women'})",
                         style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                     const SizedBox(height: 10),
-
                     if (isMale) ...[
                       _buildCategoryRow("Essential Fat", "2 - 5%", Colors.blue, user.bodyFatCategory == "Essential Fat"),
                       _buildCategoryRow("Athletes", "6 - 13%", Colors.green, user.bodyFatCategory == "Athlete"),
@@ -354,15 +341,5 @@ class DashboardTab extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class PlaceholderWidget extends StatelessWidget {
-  final String text;
-  const PlaceholderWidget({super.key, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(child: Text(text, style: const TextStyle(fontSize: 24, color: Colors.grey)));
   }
 }
