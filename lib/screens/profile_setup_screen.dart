@@ -13,25 +13,20 @@ class ProfileSetupScreen extends StatefulWidget {
 }
 
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
-  // --- Controllers for Input Fields ---
+  // --- Controllers ---
   final _nameController = TextEditingController();
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
   final _neckController = TextEditingController();
-  final _waistController = TextEditingController();
-  final _hipController = TextEditingController();
-  final _abdomenController = TextEditingController();
+  final _waistController = TextEditingController(); // For Females
+  final _hipController = TextEditingController();   // For Females
+  final _abdomenController = TextEditingController(); // For Males
 
   String _selectedGender = 'male';
   String _selectedActivity = 'Moderate';
 
-  // Activity Levels matching Wireframe
   final List<String> _activityLevels = [
-    'Sedentary',
-    'Light',
-    'Moderate',
-    'Active',
-    'Very Active'
+    'Sedentary', 'Light', 'Moderate', 'Active', 'Very Active'
   ];
 
   @override
@@ -55,13 +50,28 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       return;
     }
 
+    // Validate Gender Specific Fields
+    if (_neckController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Neck measurement is required.")));
+      return;
+    }
+
+    if (_selectedGender == 'male' && _abdomenController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Abdomen measurement is required for males.")));
+      return;
+    }
+
+    if (_selectedGender == 'female' && (_waistController.text.isEmpty || _hipController.text.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Waist and Hip measurements are required for females.")));
+      return;
+    }
+
     double parse(String text) => double.tryParse(text) ?? 0.0;
 
-    // 2. Update Provider (Local State)
+    // 2. Update Provider
     final userProvider = Provider.of<UserProvider>(context, listen: false);
 
-    // Logic: Navy Formula uses Abdomen for Men, Waist for Women.
-    // We save both if entered, but use the correct one for calculation.
+    // Logic: If Male, we use Abdomen. If Female, we use Waist.
     double relevantWaist = (_selectedGender == 'male')
         ? parse(_abdomenController.text)
         : parse(_waistController.text);
@@ -71,6 +81,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       h: parse(_heightController.text),
       n: parse(_neckController.text),
       waistVal: relevantWaist,
+      hipVal: parse(_hipController.text), // Add this to your Provider updateProfile method if missing
     );
     userProvider.name = _nameController.text;
     userProvider.gender = _selectedGender;
@@ -93,21 +104,25 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           'height': parse(_heightController.text),
           'weight': parse(_weightController.text),
           'neck': parse(_neckController.text),
-          'waist': parse(_waistController.text),
-          'hip': parse(_hipController.text),
-          'abdomen': parse(_abdomenController.text), // Added as per wireframe
+          // Save 0 for fields that are hidden
+          'waist': (_selectedGender == 'female') ? parse(_waistController.text) : 0,
+          'hip': (_selectedGender == 'female') ? parse(_hipController.text) : 0,
+          'abdomen': (_selectedGender == 'male') ? parse(_abdomenController.text) : 0,
           'activityLevel': _selectedActivity,
           'createdAt': FieldValue.serverTimestamp(),
         });
+
+        await currentUser.updateDisplayName(_nameController.text);
       }
 
-      if (mounted) Navigator.of(context).pop(); // Close spinner
+      if (mounted) Navigator.of(context).pop();
 
-      // 4. Navigate to Dashboard
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const MainScaffold()),
-            (route) => false,
-      );
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const MainScaffold()),
+              (route) => false,
+        );
+      }
 
     } catch (e) {
       if (mounted) Navigator.of(context).pop();
@@ -119,6 +134,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Theme Colors
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final textColor = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
       appBar: AppBar(title: const Text("Setup Profile")),
       body: SingleChildScrollView(
@@ -126,14 +145,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
                 "Complete your details",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)
             ),
             const SizedBox(height: 20),
 
             // --- PERSONAL DETAILS ---
-            _buildSectionHeader("Personal Details"),
+            _buildSectionHeader("Personal Details", primaryColor),
             _buildTextField("Display Name", _nameController, icon: Icons.person),
             const SizedBox(height: 15),
 
@@ -144,8 +163,21 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.wc),
               ),
-              items: ['male', 'female'].map((g) => DropdownMenuItem(value: g, child: Text(g.toUpperCase()))).toList(),
-              onChanged: (val) => setState(() => _selectedGender = val!),
+              items: ['male', 'female']
+                  .map((g) => DropdownMenuItem(value: g, child: Text(g.toUpperCase())))
+                  .toList(),
+              onChanged: (val) {
+                setState(() {
+                  _selectedGender = val!;
+                  // Optional: Clear fields when switching to avoid confusion
+                  if (_selectedGender == 'male') {
+                    _waistController.clear();
+                    _hipController.clear();
+                  } else {
+                    _abdomenController.clear();
+                  }
+                });
+              },
             ),
             const SizedBox(height: 15),
 
@@ -158,21 +190,28 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             ),
             const SizedBox(height: 25),
 
-            // --- BODY MEASUREMENTS (Wireframe Item 13) ---
-            _buildSectionHeader("Body Measurement"),
+            // --- BODY MEASUREMENTS ---
+            _buildSectionHeader("Body Measurement", primaryColor),
 
+            // Neck is required for BOTH
             _buildTextField("Neck (cm)", _neckController, isNum: true),
             const SizedBox(height: 15),
-            _buildTextField("Waist (cm)", _waistController, isNum: true),
-            const SizedBox(height: 15),
-            _buildTextField("Hip (cm)", _hipController, isNum: true),
-            const SizedBox(height: 15),
-            _buildTextField("Abdomen (cm)", _abdomenController, isNum: true), // Matches Wireframe Item 17
+
+            // --- CONDITIONAL UI LOGIC ---
+            if (_selectedGender == 'female') ...[
+              // Females need Waist and Hip
+              _buildTextField("Waist (cm)", _waistController, isNum: true),
+              const SizedBox(height: 15),
+              _buildTextField("Hip (cm)", _hipController, isNum: true),
+            ] else ...[
+              // Males need Abdomen
+              _buildTextField("Abdomen (cm)", _abdomenController, isNum: true),
+            ],
 
             const SizedBox(height: 25),
 
-            // --- LIFESTYLE (Wireframe Item 18) ---
-            _buildSectionHeader("Lifestyle Activity Level"),
+            // --- LIFESTYLE ---
+            _buildSectionHeader("Lifestyle Activity Level", primaryColor),
 
             DropdownButtonFormField<String>(
               value: _selectedActivity,
@@ -193,7 +232,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               child: ElevatedButton(
                 onPressed: _saveAndContinue,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
+                  backgroundColor: primaryColor,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -207,12 +246,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader(String title, Color color) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15.0),
       child: Text(
         title,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.deepPurple),
+        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
       ),
     );
   }
