@@ -28,7 +28,7 @@ class _CalorieScreenState extends State<CalorieScreen> {
         .add({
       'title': title,
       'calories': calories,
-      'type': 'food', // Hardcoded to food
+      'type': 'food',
       'timestamp': FieldValue.serverTimestamp(),
     });
   }
@@ -113,7 +113,6 @@ class _CalorieScreenState extends State<CalorieScreen> {
             final data = doc.data() as Map<String, dynamic>;
             final timestamp = (data['timestamp'] as Timestamp?)?.toDate() ?? now;
 
-            // Filter for Today
             if (timestamp.year == now.year && timestamp.month == now.month && timestamp.day == now.day) {
               todaysDocs.add(doc);
               int cal = data['calories'] ?? 0;
@@ -130,6 +129,8 @@ class _CalorieScreenState extends State<CalorieScreen> {
         double progress = caloriesConsumed / _dailyGoal;
         if (progress > 1.0) progress = 1.0;
         if (progress < 0) progress = 0;
+
+        bool isOverLimit = caloriesRemaining < 0;
 
         return Scaffold(
           backgroundColor: theme.scaffoldBackgroundColor,
@@ -155,8 +156,10 @@ class _CalorieScreenState extends State<CalorieScreen> {
                 Container(
                   padding: const EdgeInsets.all(25),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Colors.deepPurple, Colors.purpleAccent],
+                    gradient: LinearGradient(
+                      colors: isOverLimit
+                          ? [Colors.redAccent.shade100, Colors.pinkAccent.shade100]
+                          : [Colors.deepPurple, Colors.purpleAccent],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -170,7 +173,10 @@ class _CalorieScreenState extends State<CalorieScreen> {
                           children: [
                             const Text("Calories Remaining", style: TextStyle(color: Colors.white70)),
                             const SizedBox(height: 5),
-                            Text("$caloriesRemaining", style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
+                            Text(
+                                "$caloriesRemaining",
+                                style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)
+                            ),
                             const Text("kcal", style: TextStyle(color: Colors.white70)),
                           ],
                         ),
@@ -182,25 +188,67 @@ class _CalorieScreenState extends State<CalorieScreen> {
                             width: 80,
                             height: 80,
                             child: CircularProgressIndicator(
-                              value: progress,
+                              value: isOverLimit ? 1.0 : progress,
                               backgroundColor: Colors.white24,
                               color: Colors.white,
                               strokeWidth: 8,
                             ),
                           ),
-                          const Icon(Icons.local_fire_department, color: Colors.white, size: 28),
+                          // --- SAFE TEXT EMOJI HERE ---
+                          isOverLimit
+                              ? const Text("😲", style: TextStyle(fontSize: 32))
+                              : const Icon(
+                            Icons.local_fire_department,
+                            color: Colors.white,
+                            size: 32,
+                          ),
                         ],
                       ),
                     ],
                   ),
                 ),
 
+                // --- CUTE REMINDER ---
+                if (isOverLimit) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.red.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: isDark ? Colors.redAccent : Colors.orangeAccent, width: 1),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(FontAwesomeIcons.heart, color: Colors.pinkAccent, size: 24),
+                        const SizedBox(width: 15),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                  "It's okay!",
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: theme.colorScheme.onSurface)
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                  "You went a little over today, but don't stress! Rest up and try again tomorrow. 🌙✨",
+                                  style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withOpacity(0.8))
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 25),
 
-                // --- 2. ACTION BUTTONS (Add Food & Diary) ---
+                // --- 2. ACTION BUTTONS ---
                 Row(
                   children: [
-                    // A. ADD FOOD BUTTON
+                    // A. ADD FOOD
                     Expanded(
                       child: ElevatedButton(
                         onPressed: _showAddFoodDialog,
@@ -222,11 +270,10 @@ class _CalorieScreenState extends State<CalorieScreen> {
                     ),
                     const SizedBox(width: 15),
 
-                    // B. DIARY BUTTON
+                    // B. DIARY
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () {
-                          // Navigate to History Screen (Defined below)
                           Navigator.push(
                             context,
                             MaterialPageRoute(builder: (context) => const CalorieHistoryScreen()),
@@ -305,7 +352,7 @@ class _CalorieScreenState extends State<CalorieScreen> {
 }
 
 // =========================================================
-// 2. DIARY / HISTORY SCREEN (In the same file)
+// 2. DIARY / HISTORY SCREEN
 // =========================================================
 class CalorieHistoryScreen extends StatelessWidget {
   const CalorieHistoryScreen({super.key});
@@ -339,7 +386,6 @@ class CalorieHistoryScreen extends StatelessWidget {
             return Center(child: Text("No history found.", style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5))));
           }
 
-          // Group by Date
           Map<String, List<DocumentSnapshot>> groupedData = {};
           for (var doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
@@ -358,7 +404,6 @@ class CalorieHistoryScreen extends StatelessWidget {
               String date = groupedData.keys.elementAt(index);
               List<DocumentSnapshot> dayLogs = groupedData[date]!;
 
-              // Calculate Daily Total
               int dayTotal = 0;
               for (var doc in dayLogs) {
                 final d = doc.data() as Map<String, dynamic>;
