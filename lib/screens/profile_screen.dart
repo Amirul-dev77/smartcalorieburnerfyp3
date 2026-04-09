@@ -18,6 +18,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showEditDialog(BuildContext context, UserProvider userProvider) {
     // Initialize with current values
     final nameCtrl = TextEditingController(text: userProvider.name);
+    final ageCtrl = TextEditingController(text: userProvider.age.toString()); // --- NEW: Age Controller ---
     final heightCtrl = TextEditingController(text: userProvider.height.toString());
     final weightCtrl = TextEditingController(text: userProvider.weight.toString());
     final neckCtrl = TextEditingController(text: userProvider.neck.toString());
@@ -44,6 +45,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _editField("Display Name", nameCtrl),
+                      const SizedBox(height: 10),
+
+                      // --- NEW: Age Input Field ---
+                      _editField("Age", ageCtrl, isNum: true),
                       const SizedBox(height: 10),
 
                       // Gender Dropdown
@@ -96,6 +101,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ElevatedButton(
                     onPressed: () async {
                       try {
+                        int updatedAge = int.tryParse(ageCtrl.text) ?? userProvider.age; // --- NEW ---
                         double h = double.tryParse(heightCtrl.text) ?? userProvider.height;
                         double w = double.tryParse(weightCtrl.text) ?? userProvider.weight;
                         double n = double.tryParse(neckCtrl.text) ?? userProvider.neck;
@@ -107,6 +113,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         if (uid != null) {
                           await FirebaseFirestore.instance.collection('users').doc(uid).update({
                             'name': nameCtrl.text,
+                            'age': updatedAge, // --- NEW ---
                             'gender': tempGender,
                             'height': h,
                             'weight': w,
@@ -126,7 +133,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         userProvider.updateProfile(
                             w: w, h: h, n: n, waistVal: waistVal,
-                            hipVal: (tempGender == 'female') ? hipVal : 0
+                            hipVal: (tempGender == 'female') ? hipVal : 0,
+                            userAge: updatedAge // --- NEW ---
                         );
 
                         if (mounted) Navigator.pop(ctx);
@@ -172,11 +180,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
     String waistLabel = (userProvider.gender == 'male') ? "Abdomen" : "Waist";
 
+    // Safe color handling for Dark Mode if you switch themes later
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black;
+    final subTextColor = isDark ? Colors.white70 : Colors.black87;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("My Profile"),
         centerTitle: true,
-        // Removed the pencil Icon from here!
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 30),
@@ -193,7 +205,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // Name & Email
             Text(
                 userProvider.name,
-                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: textColor)
             ),
             Text(
                 user?.email ?? "",
@@ -202,7 +214,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 20),
 
-            // --- NEW: CLEAR "EDIT PROFILE" BUTTON ---
+            // --- EDIT PROFILE BUTTON ---
             SizedBox(
               width: 160,
               height: 45,
@@ -231,21 +243,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // Details
             _sectionHeader("Personal Details"),
-            _infoTile("Gender", userProvider.gender.toUpperCase()),
-            _infoTile("Height", "${userProvider.height} cm"),
-            _infoTile("Weight", "${userProvider.weight} kg"),
+            _infoTile("Age", "${userProvider.age} years", textColor, subTextColor), // --- NEW ---
+            _infoTile("Gender", userProvider.gender.toUpperCase(), textColor, subTextColor),
+            _infoTile("Height", "${userProvider.height} cm", textColor, subTextColor),
+            _infoTile("Weight", "${userProvider.weight} kg", textColor, subTextColor),
             const Divider(height: 40),
 
             _sectionHeader("Body Measurements"),
-            _infoTile("Neck", "${userProvider.neck} cm"),
-            _infoTile(waistLabel, "${userProvider.waist} cm"),
+            _infoTile("Neck", "${userProvider.neck} cm", textColor, subTextColor),
+            _infoTile(waistLabel, "${userProvider.waist} cm", textColor, subTextColor),
             if (userProvider.gender == 'female')
-              _infoTile("Hip", "${userProvider.hip} cm"),
+              _infoTile("Hip", "${userProvider.hip} cm", textColor, subTextColor),
 
             const Divider(height: 40),
 
             _sectionHeader("Lifestyle"),
-            _infoTile("Activity", userProvider.activityLevel),
+            _infoTile("Activity", userProvider.activityLevel, textColor, subTextColor),
             const SizedBox(height: 40),
 
             // Logout Button
@@ -279,13 +292,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       )
   );
 
-  Widget _infoTile(String title, String value) => Padding(
+  Widget _infoTile(String title, String value, Color mainColor, Color subColor) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 10.0),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.black87)),
-        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
+        Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: subColor)),
+        Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: mainColor)),
       ],
     ),
   );

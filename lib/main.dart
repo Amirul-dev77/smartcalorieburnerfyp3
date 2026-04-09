@@ -9,7 +9,7 @@ import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/calorie_screen.dart';
-import 'screens/workout_screen.dart'; // <--- 1. NEW IMPORT ADDED
+import 'screens/workout_screen.dart';
 
 // --- APP ENTRY POINT ---
 void main() async {
@@ -45,27 +45,12 @@ class SmartCalorieApp extends StatelessWidget {
 }
 
 // --- AUTH WRAPPER ---
-class AuthWrapper extends StatefulWidget {
+class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   @override
-  State<AuthWrapper> createState() => _AuthWrapperState();
-}
-
-class _AuthWrapperState extends State<AuthWrapper> {
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(() {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        Provider.of<UserProvider>(context, listen: false).fetchUserData();
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // Removed initState from here. This widget now just handles routing based on auth state.
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       return const MainScaffold();
@@ -86,11 +71,25 @@ class MainScaffold extends StatefulWidget {
 class _MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 1; // Default to Dashboard (BMI)
 
+  // --- ADDED INITSTATE HERE ---
+  // Now, no matter how the user reaches the MainScaffold, their data will ALWAYS load immediately.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        Provider.of<UserProvider>(context, listen: false).fetchUserData();
+      }
+    });
+  }
+  // ----------------------------
+
   final List<Widget> _screens = [
     const ProfileScreen(),
     const DashboardTab(),
     const CalorieScreen(),
-    const WorkoutScreen(),             // <--- 2. UPDATED: Uses the real screen now!
+    const WorkoutScreen(),
     const CalendarScreen(),
   ];
 

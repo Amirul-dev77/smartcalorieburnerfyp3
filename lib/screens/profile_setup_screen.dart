@@ -13,14 +13,14 @@ class ProfileSetupScreen extends StatefulWidget {
 }
 
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
-  // --- Controllers ---
   final _nameController = TextEditingController();
+  final _ageController = TextEditingController(); // --- NEW ---
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
   final _neckController = TextEditingController();
-  final _waistController = TextEditingController(); // For Females
-  final _hipController = TextEditingController();   // For Females
-  final _abdomenController = TextEditingController(); // For Males
+  final _waistController = TextEditingController();
+  final _hipController = TextEditingController();
+  final _abdomenController = TextEditingController();
 
   String _selectedGender = 'male';
   String _selectedActivity = 'Moderate';
@@ -32,6 +32,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _ageController.dispose(); // --- NEW ---
     _heightController.dispose();
     _weightController.dispose();
     _neckController.dispose();
@@ -42,46 +43,43 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   }
 
   Future<void> _saveAndContinue() async {
-    // 1. Basic Validation
-    if (_heightController.text.isEmpty || _weightController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Height and Weight are required!")),
-      );
+    // 1. Validation (Added Age)
+    if (_heightController.text.isEmpty || _weightController.text.isEmpty || _ageController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Age, Height, and Weight are required!")));
       return;
     }
 
-    // Validate Gender Specific Fields
     if (_neckController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Neck measurement is required.")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Neck is required.")));
       return;
     }
-
     if (_selectedGender == 'male' && _abdomenController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Abdomen measurement is required for males.")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Abdomen is required for men.")));
       return;
     }
-
     if (_selectedGender == 'female' && (_waistController.text.isEmpty || _hipController.text.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Waist and Hip measurements are required for females.")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Waist and Hip are required for women.")));
       return;
     }
 
-    double parse(String text) => double.tryParse(text) ?? 0.0;
+    double parseD(String text) => double.tryParse(text) ?? 0.0;
+    int parseI(String text) => int.tryParse(text) ?? 25; // Helper for Age
+
+    double relevantWaist = (_selectedGender == 'male')
+        ? parseD(_abdomenController.text)
+        : parseD(_waistController.text);
 
     // 2. Update Provider
+    if (!mounted) return;
     final userProvider = Provider.of<UserProvider>(context, listen: false);
 
-    // Logic: If Male, we use Abdomen. If Female, we use Waist.
-    double relevantWaist = (_selectedGender == 'male')
-        ? parse(_abdomenController.text)
-        : parse(_waistController.text);
-
     userProvider.updateProfile(
-      w: parse(_weightController.text),
-      h: parse(_heightController.text),
-      n: parse(_neckController.text),
+      w: parseD(_weightController.text),
+      h: parseD(_heightController.text),
+      n: parseD(_neckController.text),
       waistVal: relevantWaist,
-      hipVal: parse(_hipController.text), // Add this to your Provider updateProfile method if missing
+      hipVal: (_selectedGender == 'female') ? parseD(_hipController.text) : 0,
+      userAge: parseI(_ageController.text), // --- NEW ---
     );
     userProvider.name = _nameController.text;
     userProvider.gender = _selectedGender;
@@ -101,13 +99,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           'name': _nameController.text,
           'email': currentUser.email,
           'gender': _selectedGender,
-          'height': parse(_heightController.text),
-          'weight': parse(_weightController.text),
-          'neck': parse(_neckController.text),
-          // Save 0 for fields that are hidden
-          'waist': (_selectedGender == 'female') ? parse(_waistController.text) : 0,
-          'hip': (_selectedGender == 'female') ? parse(_hipController.text) : 0,
-          'abdomen': (_selectedGender == 'male') ? parse(_abdomenController.text) : 0,
+          'age': parseI(_ageController.text), // --- NEW ---
+          'height': parseD(_heightController.text),
+          'weight': parseD(_weightController.text),
+          'neck': parseD(_neckController.text),
+          'waist': (_selectedGender == 'female') ? parseD(_waistController.text) : 0,
+          'hip': (_selectedGender == 'female') ? parseD(_hipController.text) : 0,
+          'abdomen': (_selectedGender == 'male') ? parseD(_abdomenController.text) : 0,
           'activityLevel': _selectedActivity,
           'createdAt': FieldValue.serverTimestamp(),
         });
@@ -115,7 +113,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         await currentUser.updateDisplayName(_nameController.text);
       }
 
-      if (mounted) Navigator.of(context).pop();
+      if (!mounted) return;
+      Navigator.of(context).pop();
 
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -123,18 +122,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               (route) => false,
         );
       }
-
     } catch (e) {
       if (mounted) Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error saving profile: $e")),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Theme Colors
     final primaryColor = Theme.of(context).colorScheme.primary;
     final textColor = Theme.of(context).colorScheme.onSurface;
 
@@ -145,88 +140,76 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-                "Complete your details",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)
-            ),
+            Text("Complete your details", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)),
             const SizedBox(height: 20),
 
-            // --- PERSONAL DETAILS ---
             _buildSectionHeader("Personal Details", primaryColor),
             _buildTextField("Display Name", _nameController, icon: Icons.person),
             const SizedBox(height: 15),
 
-            DropdownButtonFormField<String>(
-              value: _selectedGender,
-              decoration: const InputDecoration(
-                labelText: "Gender",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.wc),
-              ),
-              items: ['male', 'female']
-                  .map((g) => DropdownMenuItem(value: g, child: Text(g.toUpperCase())))
-                  .toList(),
-              onChanged: (val) {
-                setState(() {
-                  _selectedGender = val!;
-                  // Optional: Clear fields when switching to avoid confusion
-                  if (_selectedGender == 'male') {
-                    _waistController.clear();
-                    _hipController.clear();
-                  } else {
-                    _abdomenController.clear();
-                  }
-                });
-              },
+            // --- AGE AND GENDER ROW ---
+            Row(
+              children: [
+                Expanded(
+                  flex: 1,
+                  child: _buildTextField("Age", _ageController, isNum: true),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  flex: 2,
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedGender,
+                    decoration: const InputDecoration(labelText: "Gender", border: OutlineInputBorder(), prefixIcon: Icon(Icons.wc)),
+                    items: ['male', 'female'].map((g) => DropdownMenuItem(value: g, child: Text(g.toUpperCase()))).toList(),
+                    onChanged: (val) {
+                      setState(() {
+                        _selectedGender = val!;
+                        if(_selectedGender == 'male') {
+                          _waistController.clear(); _hipController.clear();
+                        } else {
+                          _abdomenController.clear();
+                        }
+                      });
+                    },
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 15),
 
-            Row(
-              children: [
-                Expanded(child: _buildTextField("Height (cm)", _heightController, isNum: true)),
-                const SizedBox(width: 15),
-                Expanded(child: _buildTextField("Weight (kg)", _weightController, isNum: true)),
-              ],
-            ),
+            Row(children: [
+              Expanded(child: _buildTextField("Height (cm)", _heightController, isNum: true)),
+              const SizedBox(width: 15),
+              Expanded(child: _buildTextField("Weight (kg)", _weightController, isNum: true)),
+            ]),
             const SizedBox(height: 25),
 
-            // --- BODY MEASUREMENTS ---
+            // ... The rest of your Body Measurement & Lifestyle code stays the same ...
             _buildSectionHeader("Body Measurement", primaryColor),
 
-            // Neck is required for BOTH
             _buildTextField("Neck (cm)", _neckController, isNum: true),
             const SizedBox(height: 15),
 
-            // --- CONDITIONAL UI LOGIC ---
-            if (_selectedGender == 'female') ...[
-              // Females need Waist and Hip
+            if (_selectedGender == 'male') ...[
+              _buildTextField("Abdomen (cm)", _abdomenController, isNum: true),
+              const Padding(padding: EdgeInsets.only(top: 5, left: 5), child: Text("Measure around navel", style: TextStyle(fontSize: 12, color: Colors.grey))),
+            ] else ...[
               _buildTextField("Waist (cm)", _waistController, isNum: true),
               const SizedBox(height: 15),
               _buildTextField("Hip (cm)", _hipController, isNum: true),
-            ] else ...[
-              // Males need Abdomen
-              _buildTextField("Abdomen (cm)", _abdomenController, isNum: true),
             ],
 
             const SizedBox(height: 25),
 
-            // --- LIFESTYLE ---
-            _buildSectionHeader("Lifestyle Activity Level", primaryColor),
-
+            _buildSectionHeader("Lifestyle", primaryColor),
             DropdownButtonFormField<String>(
               value: _selectedActivity,
-              decoration: const InputDecoration(
-                labelText: "Activity Level",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.directions_run),
-              ),
+              decoration: const InputDecoration(labelText: "Activity Level", border: OutlineInputBorder(), prefixIcon: Icon(Icons.directions_run)),
               items: _activityLevels.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
               onChanged: (val) => setState(() => _selectedActivity = val!),
             ),
 
             const SizedBox(height: 40),
-
-            // --- SAVE BUTTON ---
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -249,10 +232,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   Widget _buildSectionHeader(String title, Color color) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15.0),
-      child: Text(
-        title,
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
-      ),
+      child: Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
     );
   }
 

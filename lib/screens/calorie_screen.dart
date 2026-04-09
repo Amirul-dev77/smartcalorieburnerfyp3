@@ -3,6 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:provider/provider.dart'; // --- NEW: Added Provider
+import '../providers/user_provider.dart'; // --- NEW: Added UserProvider
 
 // =========================================================
 // 1. MAIN CALORIE SCREEN (TRACKER)
@@ -16,9 +20,10 @@ class CalorieScreen extends StatefulWidget {
 
 class _CalorieScreenState extends State<CalorieScreen> {
   final user = FirebaseAuth.instance.currentUser;
-  final int _dailyGoal = 2200;
 
-  // --- ADD ENTRY (FOOD ONLY) ---
+  // REMOVED the hardcoded _dailyGoal = 2200 from here!
+
+  // --- ADD ENTRY TO FIREBASE ---
   void _addNewEntry(String title, int calories) async {
     if (user == null) return;
     await FirebaseFirestore.instance
@@ -44,47 +49,119 @@ class _CalorieScreenState extends State<CalorieScreen> {
         .delete();
   }
 
-  // --- SHOW ADD FOOD DIALOG ---
+  // --- NLP API CALL & DIALOG ---
   void _showAddFoodDialog() {
-    final TextEditingController titleController = TextEditingController();
-    final TextEditingController calorieController = TextEditingController();
+    final TextEditingController foodInputController = TextEditingController();
+    bool isFetching = false;
+    String errorMessage = "";
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Add Food 🍔"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(labelText: "Description (e.g. Rice)"),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: calorieController,
-              decoration: const InputDecoration(labelText: "Calories"),
-              keyboardType: TextInputType.number,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (titleController.text.isNotEmpty && calorieController.text.isNotEmpty) {
-                int cal = int.tryParse(calorieController.text) ?? 0;
-                _addNewEntry(titleController.text, cal);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text("Save"),
-          ),
-        ],
-      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text("What did you eat? 🍔"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    "Just type naturally! e.g., '2 boiled eggs and a slice of toast'",
+                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: foodInputController,
+                    decoration: const InputDecoration(
+                      labelText: "Your meal",
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 2,
+                  ),
+                  if (errorMessage.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(errorMessage, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                  ],
+                  if (isFetching) ...[
+                    const SizedBox(height: 15),
+                    const CircularProgressIndicator(),
+                  ]
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isFetching ? null : () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: isFetching
+                      ? null
+                      : () async {
+                    if (foodInputController.text.trim().isEmpty) return;
+
+                    setState(() {
+                      isFetching = true;
+                      errorMessage = "";
+                    });
+
+                    try {
+                      const String apiKey = 'Xo5aaPKG8n+yWPPyj2L9Yw==yGp3Ve3SBX9084js'; // Remember to keep your API key here!
+                      final query = Uri.encodeComponent(foodInputController.text);
+                      final url = Uri.parse('https://api.calorieninjas.com/v1/nutrition?query=$query');
+
+                      final response = await http.get(
+                        url,
+                        headers: {'X-Api-Key': apiKey},
+                      );
+
+                      if (response.statusCode == 200) {
+                        final data = jsonDecode(response.body);
+                        final items = data['items'] as List;
+
+                        if (items.isEmpty) {
+                          setState(() {
+                            errorMessage = "Couldn't recognize any food. Try being more specific!";
+                            isFetching = false;
+                          });
+                          return;
+                        }
+
+                        double totalCalories = 0;
+                        List<String> foodNames = [];
+
+                        for (var item in items) {
+                          totalCalories += item['calories'];
+                          String name = item['name'].toString();
+                          name = name[0].toUpperCase() + name.substring(1);
+                          foodNames.add(name);
+                        }
+
+                        String combinedTitle = foodNames.join(', ');
+
+                        _addNewEntry(combinedTitle, totalCalories.round());
+
+                        if (context.mounted) Navigator.pop(context);
+
+                      } else {
+                        setState(() {
+                          errorMessage = "API Error: ${response.statusCode}";
+                          isFetching = false;
+                        });
+                      }
+                    } catch (e) {
+                      setState(() {
+                        errorMessage = "Network error. Check your connection.";
+                        isFetching = false;
+                      });
+                    }
+                  },
+                  child: const Text("Analyze & Save"),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -93,6 +170,10 @@ class _CalorieScreenState extends State<CalorieScreen> {
     String formattedDate = DateFormat.yMMMd().format(DateTime.now());
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    // --- NEW: FETCH THE REAL DYNAMIC GOAL FROM THE PROVIDER ---
+    final userProvider = Provider.of<UserProvider>(context);
+    final int dynamicDailyGoal = userProvider.calculatedDailyGoal;
 
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -125,8 +206,9 @@ class _CalorieScreenState extends State<CalorieScreen> {
           }
         }
 
-        int caloriesRemaining = _dailyGoal - caloriesConsumed + caloriesBurned;
-        double progress = caloriesConsumed / _dailyGoal;
+        // --- NEW: USE THE DYNAMIC GOAL FOR ALL MATH ---
+        int caloriesRemaining = dynamicDailyGoal - caloriesConsumed + caloriesBurned;
+        double progress = caloriesConsumed / dynamicDailyGoal;
         if (progress > 1.0) progress = 1.0;
         if (progress < 0) progress = 0;
 
@@ -194,14 +276,9 @@ class _CalorieScreenState extends State<CalorieScreen> {
                               strokeWidth: 8,
                             ),
                           ),
-                          // --- SAFE TEXT EMOJI HERE ---
                           isOverLimit
                               ? const Text("😲", style: TextStyle(fontSize: 32))
-                              : const Icon(
-                            Icons.local_fire_department,
-                            color: Colors.white,
-                            size: 32,
-                          ),
+                              : const Icon(Icons.local_fire_department, color: Colors.white, size: 32),
                         ],
                       ),
                     ],
@@ -248,7 +325,6 @@ class _CalorieScreenState extends State<CalorieScreen> {
                 // --- 2. ACTION BUTTONS ---
                 Row(
                   children: [
-                    // A. ADD FOOD
                     Expanded(
                       child: ElevatedButton(
                         onPressed: _showAddFoodDialog,
@@ -269,15 +345,10 @@ class _CalorieScreenState extends State<CalorieScreen> {
                       ),
                     ),
                     const SizedBox(width: 15),
-
-                    // B. DIARY
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const CalorieHistoryScreen()),
-                          );
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const CalorieHistoryScreen()));
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.cardColor,
@@ -365,35 +436,21 @@ class CalorieHistoryScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text("Food Diary 📅"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text("Food Diary 📅"), centerTitle: true),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(user?.uid)
-            .collection('calorie_logs')
-            .orderBy('timestamp', descending: true)
-            .snapshots(),
+        stream: FirebaseFirestore.instance.collection('users').doc(user?.uid).collection('calorie_logs').orderBy('timestamp', descending: true).snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
           final docs = snapshot.data!.docs;
-          if (docs.isEmpty) {
-            return Center(child: Text("No history found.", style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5))));
-          }
+          if (docs.isEmpty) return Center(child: Text("No history found.", style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5))));
 
           Map<String, List<DocumentSnapshot>> groupedData = {};
           for (var doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
             final timestamp = (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
             String dateKey = DateFormat.yMMMd().format(timestamp);
-            if (!groupedData.containsKey(dateKey)) {
-              groupedData[dateKey] = [];
-            }
+            if (!groupedData.containsKey(dateKey)) groupedData[dateKey] = [];
             groupedData[dateKey]!.add(doc);
           }
 
@@ -403,7 +460,6 @@ class CalorieHistoryScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               String date = groupedData.keys.elementAt(index);
               List<DocumentSnapshot> dayLogs = groupedData[date]!;
-
               int dayTotal = 0;
               for (var doc in dayLogs) {
                 final d = doc.data() as Map<String, dynamic>;
@@ -431,20 +487,13 @@ class CalorieHistoryScreen extends StatelessWidget {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: theme.cardColor,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: isDark ? Colors.white10 : Colors.grey.withOpacity(0.1)),
-                      ),
+                      decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(10), border: Border.all(color: isDark ? Colors.white10 : Colors.grey.withOpacity(0.1))),
                       child: Row(
                         children: [
                           Icon(isFood ? Icons.restaurant_menu : Icons.fitness_center, size: 16, color: isFood ? Colors.orange : Colors.blue),
                           const SizedBox(width: 10),
                           Expanded(child: Text(data['title'] ?? '', style: TextStyle(color: theme.colorScheme.onSurface))),
-                          Text(
-                            isFood ? "+${data['calories']}" : "-${data['calories']}",
-                            style: TextStyle(fontWeight: FontWeight.bold, color: isFood ? Colors.redAccent : Colors.green),
-                          ),
+                          Text(isFood ? "+${data['calories']}" : "-${data['calories']}", style: TextStyle(fontWeight: FontWeight.bold, color: isFood ? Colors.redAccent : Colors.green)),
                         ],
                       ),
                     );
