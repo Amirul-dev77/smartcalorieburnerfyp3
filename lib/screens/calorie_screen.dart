@@ -5,8 +5,9 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:provider/provider.dart'; // --- NEW: Added Provider
-import '../providers/user_provider.dart'; // --- NEW: Added UserProvider
+import 'package:provider/provider.dart';
+import 'package:simple_barcode_scanner/simple_barcode_scanner.dart'; // --- NEW: Barcode Scanner
+import '../providers/user_provider.dart';
 
 // =========================================================
 // 1. MAIN CALORIE SCREEN (TRACKER)
@@ -20,8 +21,6 @@ class CalorieScreen extends StatefulWidget {
 
 class _CalorieScreenState extends State<CalorieScreen> {
   final user = FirebaseAuth.instance.currentUser;
-
-  // REMOVED the hardcoded _dailyGoal = 2200 from here!
 
   // --- ADD ENTRY TO FIREBASE ---
   void _addNewEntry(String title, int calories) async {
@@ -49,7 +48,7 @@ class _CalorieScreenState extends State<CalorieScreen> {
         .delete();
   }
 
-  // --- NLP API CALL & DIALOG ---
+  // --- 1. NLP API CALL (Calorie Ninjas) ---
   void _showAddFoodDialog() {
     final TextEditingController foodInputController = TextEditingController();
     bool isFetching = false;
@@ -105,9 +104,13 @@ class _CalorieScreenState extends State<CalorieScreen> {
                     });
 
                     try {
-                      const String apiKey = 'Xo5aaPKG8n+yWPPyj2L9Yw==yGp3Ve3SBX9084js'; // Remember to keep your API key here!
-                      final query = Uri.encodeComponent(foodInputController.text);
-                      final url = Uri.parse('https://api.calorieninjas.com/v1/nutrition?query=$query');
+                      // TODO: PASTE YOUR REAL API KEY HERE
+                      const String apiKey = 'Xo5aaPKG8n+yWPPyj2L9Yw==yGp3Ve3SBX9084js';
+
+                      // Safe URL formatting for spaces
+                      final url = Uri.https('api.calorieninjas.com', '/v1/nutrition', {
+                        'query': foodInputController.text
+                      });
 
                       final response = await http.get(
                         url,
@@ -165,13 +168,75 @@ class _CalorieScreenState extends State<CalorieScreen> {
     );
   }
 
+  // --- 2. BARCODE SCANNER (Open Food Facts) ---
+  void _scanBarcodeAndFetch() async {
+    String? res = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const SimpleBarcodeScannerPage(),
+      ),
+    );
+
+    if (res == null || res == '-1') return;
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final url = Uri.https('world.openfoodfacts.org', '/api/v0/product/$res.json');
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['status'] == 1) {
+          final product = data['product'];
+
+          String productName = product['product_name'] ?? 'Unknown Snack';
+          num calories = product['nutriments']['energy-kcal_serving']
+              ?? product['nutriments']['energy-kcal_100g']
+              ?? 0;
+
+          _addNewEntry(productName, calories.round());
+
+          if (mounted) Navigator.pop(context);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Scanned: $productName (${calories.round()} kcal)"), backgroundColor: Colors.green),
+            );
+          }
+        } else {
+          if (mounted) Navigator.pop(context);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Product not found in database!"), backgroundColor: Colors.orange),
+            );
+          }
+        }
+      } else {
+        if (mounted) Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Network error or invalid barcode."), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     String formattedDate = DateFormat.yMMMd().format(DateTime.now());
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // --- NEW: FETCH THE REAL DYNAMIC GOAL FROM THE PROVIDER ---
+    // --- FETCH DYNAMIC GOAL ---
     final userProvider = Provider.of<UserProvider>(context);
     final int dynamicDailyGoal = userProvider.calculatedDailyGoal;
 
@@ -206,7 +271,7 @@ class _CalorieScreenState extends State<CalorieScreen> {
           }
         }
 
-        // --- NEW: USE THE DYNAMIC GOAL FOR ALL MATH ---
+        // --- MATH WITH DYNAMIC GOAL ---
         int caloriesRemaining = dynamicDailyGoal - caloriesConsumed + caloriesBurned;
         double progress = caloriesConsumed / dynamicDailyGoal;
         if (progress > 1.0) progress = 1.0;
@@ -322,46 +387,74 @@ class _CalorieScreenState extends State<CalorieScreen> {
 
                 const SizedBox(height: 25),
 
-                // --- 2. ACTION BUTTONS ---
+                // --- 2. ACTION BUTTONS (3 BUTTONS) ---
                 Row(
                   children: [
+                    // A. TYPE FOOD
                     Expanded(
                       child: ElevatedButton(
                         onPressed: _showAddFoodDialog,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.cardColor,
                           foregroundColor: theme.colorScheme.onSurface,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                           elevation: 2,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                         ),
                         child: Column(
                           children: const [
-                            Icon(FontAwesomeIcons.appleWhole, color: Colors.orange, size: 24),
-                            SizedBox(height: 8),
-                            Text("Add Food", style: TextStyle(fontWeight: FontWeight.bold)),
+                            Icon(FontAwesomeIcons.keyboard, color: Colors.orange, size: 20),
+                            SizedBox(height: 5),
+                            Text("Type", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           ],
                         ),
                       ),
                     ),
-                    const SizedBox(width: 15),
+                    const SizedBox(width: 10),
+
+                    // B. SCAN BARCODE
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const CalorieHistoryScreen()));
-                        },
+                        onPressed: _scanBarcodeAndFetch,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.cardColor,
                           foregroundColor: theme.colorScheme.onSurface,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                           elevation: 2,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                         ),
                         child: Column(
                           children: const [
-                            Icon(FontAwesomeIcons.bookOpen, color: Colors.deepPurple, size: 24),
-                            SizedBox(height: 8),
-                            Text("Diary", style: TextStyle(fontWeight: FontWeight.bold)),
+                            Icon(FontAwesomeIcons.barcode, color: Colors.blue, size: 20),
+                            SizedBox(height: 5),
+                            Text("Scan", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // C. DIARY
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const CalorieHistoryScreen()),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.cardColor,
+                          foregroundColor: theme.colorScheme.onSurface,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        ),
+                        child: Column(
+                          children: const [
+                            Icon(FontAwesomeIcons.bookOpen, color: Colors.deepPurple, size: 20),
+                            SizedBox(height: 5),
+                            Text("Diary", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           ],
                         ),
                       ),
