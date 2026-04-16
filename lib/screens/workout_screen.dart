@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
-import 'active_workout_screen.dart'; // Make sure this matches your file name!
+import 'active_workout_screen.dart';
 
 class WorkoutScreen extends StatefulWidget {
   const WorkoutScreen({super.key});
@@ -12,10 +12,11 @@ class WorkoutScreen extends StatefulWidget {
 }
 
 class _WorkoutScreenState extends State<WorkoutScreen> {
-  // --- 1. DEFINE ROUTINES DATA (With Lifestyle Tags & Hypertrophy Focus) ---
+  // --- 1. DEFINE ROUTINES DATA (Now with 'type' routing flags!) ---
   final List<Map<String, dynamic>> _routines = [
     {
       'title': 'Push Workout',
+      'type': 'strength', // Routes to the sets/reps table
       'desc': 'Bench Press, Shoulder Press, Lateral Raises, Tricep Dips',
       'calories': 250,
       'duration': '45 mins',
@@ -24,6 +25,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     },
     {
       'title': 'Pull Workout',
+      'type': 'strength',
       'desc': 'Plate-Loaded Rows, Lat Pulldowns, Face Pulls, Bayesian Curls',
       'calories': 230,
       'duration': '45 mins',
@@ -32,6 +34,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     },
     {
       'title': 'Legs Workout',
+      'type': 'strength',
       'desc': 'Squats, Leg Press, RDLs, Calf Raises',
       'calories': 350,
       'duration': '50 mins',
@@ -40,6 +43,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     },
     {
       'title': 'Outdoor Running',
+      'type': 'cardio', // Routes to the Big Stopwatch
       'desc': '5km run at a moderate pace (approx 6:00/km)',
       'calories': 400,
       'duration': '30 mins',
@@ -48,6 +52,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     },
     {
       'title': 'Brisk Walking',
+      'type': 'cardio', // Routes to the Big Stopwatch
       'desc': 'Power walking in the park or treadmill incline',
       'calories': 150,
       'duration': '30 mins',
@@ -56,6 +61,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     },
     {
       'title': 'Light Stretching',
+      'type': 'cardio', // Using the cardio stopwatch is perfect for stretching
       'desc': 'Full body mobility and static stretching',
       'calories': 80,
       'duration': '15 mins',
@@ -260,6 +266,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         borderRadius: BorderRadius.circular(5),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: Colors.grey[600]),
           const SizedBox(width: 4),
