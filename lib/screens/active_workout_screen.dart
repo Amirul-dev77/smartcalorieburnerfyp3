@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import '../providers/user_provider.dart';
 import 'dart:async';
+import 'package:geolocator/geolocator.dart';
+import 'package:pedometer/pedometer.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 // ==========================================
 // 1. DATA MODELS (Strength Training)
@@ -74,16 +79,25 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   double _calculatedPace = 0.0;
   int _calculatedCalories = 0;
 
+  // SMART GOALS
+  int _targetMins = 30;
+  double _targetKm = 3.0;
+
+  // --- LIVE SENSOR TRACKING ---
+  StreamSubscription<Position>? _positionStream;
+  StreamSubscription<StepCount>? _stepStream;
+  Position? _lastPosition;
+  double _liveDistanceKm = 0.0;
+  int _initialSteps = -1; // -1 means we haven't grabbed the starting steps yet
+
   @override
   void initState() {
     super.initState();
     isCardio = widget.routine['type'] == 'cardio';
 
     if (isCardio) {
-      // For cardio, we don't start the timer until they press "Start Walk"
       _calculatedCalories = widget.routine['calories'] ?? 0;
     } else {
-      // For strength, parse exercises and start global timer immediately
       String description = widget.routine['desc'] as String;
       List<String> exerciseNames = description.split(',').map((e) => e.trim()).toList();
 
@@ -104,6 +118,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _stopLiveTracking(); // Clean up sensor streams to save battery!
     _elapsedSeconds.dispose();
     _workoutStats.dispose();
     for (var ex in _exercises) {
@@ -131,7 +146,59 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   }
 
   // ==========================================
-  // 4. STRENGTH LOGIC
+  // 4. LIVE SENSOR LOGIC (NEW!)
+  // ==========================================
+  Future<void> _startLiveTracking() async {
+    // 1. Request OS Permissions
+    var locStatus = await Permission.location.request();
+    var actStatus = await Permission.activityRecognition.request();
+
+    // 2. Start GPS Tracking
+    if (locStatus.isGranted) {
+      // Use LocationSettings to only update when they move at least 5 meters (saves battery)
+      _positionStream = Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5)
+      ).listen((Position position) {
+        if (_lastPosition != null) {
+          // Calculate distance between last ping and current ping in meters
+          double distanceInMeters = Geolocator.distanceBetween(
+            _lastPosition!.latitude, _lastPosition!.longitude,
+            position.latitude, position.longitude,
+          );
+
+          setState(() {
+            _liveDistanceKm += (distanceInMeters / 1000); // Convert to km
+            _distanceCtrl.text = _liveDistanceKm.toStringAsFixed(2); // Auto-fill the UI box!
+          });
+        }
+        _lastPosition = position;
+      });
+    } else {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("GPS access denied. Distance must be entered manually.")));
+    }
+
+    // 3. Start Step Tracking
+    if (actStatus.isGranted) {
+      _stepStream = Pedometer.stepCountStream.listen((StepCount event) {
+        setState(() {
+          // The pedometer counts total steps since the phone was turned on.
+          // We capture the starting number, and subtract it to get the session steps.
+          if (_initialSteps == -1) _initialSteps = event.steps;
+
+          int currentSessionSteps = event.steps - _initialSteps;
+          _stepsCtrl.text = currentSessionSteps.toString(); // Auto-fill the UI box!
+        });
+      });
+    }
+  }
+
+  void _stopLiveTracking() {
+    _positionStream?.cancel();
+    _stepStream?.cancel();
+  }
+
+  // ==========================================
+  // 5. STRENGTH LOGIC
   // ==========================================
   void _calculateGlobalStats() {
     int totalVolume = 0;
@@ -213,7 +280,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   }
 
   // ==========================================
-  // 5. CARDIO LOGIC
+  // 6. CARDIO LOGIC (Smart Recommendation)
   // ==========================================
   void _calculateCardioMetrics() {
     double distance = double.tryParse(_distanceCtrl.text) ?? 0.0;
@@ -229,6 +296,36 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     });
   }
 
+  void _calculateSmartGoal(double bmi, String lifestyle) {
+    int mins = 30;
+    double km = 3.0;
+
+    if (bmi >= 30) {
+      mins -= 10;
+      km -= 1.0;
+    } else if (bmi >= 25 || bmi < 18.5) {
+      mins -= 5;
+      km -= 0.5;
+    }
+
+    if (lifestyle == 'Sedentary') {
+      mins -= 5;
+      km -= 0.5;
+    } else if (lifestyle == 'Very Active') {
+      mins += 15;
+      km += 2.0;
+    } else if (lifestyle == 'Active') {
+      mins += 5;
+      km += 0.5;
+    }
+
+    if (mins < 10) mins = 10;
+    if (km < 1.0) km = 1.0;
+
+    _targetMins = mins;
+    _targetKm = km;
+  }
+
   void _finishCardioWorkout() {
     if (_elapsedSeconds.value < 10) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Workout too short to log!"), backgroundColor: Colors.orange));
@@ -242,11 +339,12 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       'distance_km': double.tryParse(_distanceCtrl.text) ?? 0.0,
       'pace': _calculatedPace,
       'steps': int.tryParse(_stepsCtrl.text) ?? 0,
+      'target_achieved': (_elapsedSeconds.value / 60) >= _targetMins,
     });
   }
 
   // ==========================================
-  // 6. FIREBASE SAVING
+  // 7. FIREBASE SAVING
   // ==========================================
   void _saveToFirebase(Map<String, dynamic> data) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -259,10 +357,10 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('calorie_logs').add(data);
 
       if (mounted) {
-        Navigator.pop(context); // Close dialog
-        Navigator.pop(context); // Go back to Workout List
+        Navigator.pop(context);
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Workout Logged!"), backgroundColor: Colors.green),
+          SnackBar(content: Text("Workout Logged successfully!"), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
@@ -272,11 +370,13 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   }
 
   // ==========================================
-  // 7. UI ROUTING
+  // 8. UI ROUTING
   // ==========================================
   @override
   Widget build(BuildContext context) {
     if (isCardio) {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      _calculateSmartGoal(userProvider.bmi, userProvider.activityLevel);
       return _buildCardioUI();
     } else {
       return _buildStrengthUI();
@@ -284,7 +384,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   }
 
   // ==========================================
-  // 8. CARDIO UI BUILDER
+  // 9. CARDIO UI BUILDER
   // ==========================================
   Widget _buildCardioUI() {
     return Scaffold(
@@ -294,6 +394,38 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
         padding: const EdgeInsets.all(30),
         child: Column(
           children: [
+            // --- SMART GOAL BANNER ---
+            if (!_isCardioFinished)
+              Container(
+                margin: const EdgeInsets.only(bottom: 30),
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.lightbulb, color: Colors.blue),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Suggested Goal", style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold, fontSize: 13)),
+                          const SizedBox(height: 4),
+                          Text("Aim for $_targetMins mins or ${_targetKm.toStringAsFixed(1)} km.", style: TextStyle(color: Colors.blue[900], fontSize: 15)),
+                          const SizedBox(height: 8),
+                          Text("* The suggestion was made based on your profile.", style: TextStyle(color: Colors.blue[700], fontSize: 11, fontStyle: FontStyle.italic)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // --- STOPWATCH ---
             Container(
               padding: const EdgeInsets.all(40),
               decoration: BoxDecoration(shape: BoxShape.circle, color: _isCardioRunning ? Colors.deepPurple.withOpacity(0.1) : Colors.white, border: Border.all(color: Colors.deepPurple, width: 4)),
@@ -303,12 +435,18 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
               ),
             ),
             const SizedBox(height: 40),
+
+            // --- START/PAUSE/END CONTROLS ---
             if (!_isCardioFinished) ...[
               if (!_isCardioRunning)
                 SizedBox(
                   width: double.infinity, height: 60,
                   child: ElevatedButton(
-                    onPressed: () { setState(() { _isCardioRunning = true; _startTimer(); }); },
+                    onPressed: () {
+                      setState(() { _isCardioRunning = true; });
+                      _startTimer();
+                      _startLiveTracking(); // <-- TURNS ON SENSORS!
+                    },
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
                     child: const Text("START WALK", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
@@ -318,7 +456,11 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () { setState(() { _isCardioRunning = false; _timer?.cancel(); }); },
+                        onPressed: () {
+                          setState(() { _isCardioRunning = false; });
+                          _timer?.cancel();
+                          _stopLiveTracking(); // <-- PAUSES SENSORS
+                        },
                         style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15), side: const BorderSide(color: Colors.orange, width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                         child: const Text("PAUSE", style: TextStyle(color: Colors.orange, fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
@@ -326,7 +468,11 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                     const SizedBox(width: 15),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () { setState(() { _isCardioRunning = false; _isCardioFinished = true; _timer?.cancel(); }); },
+                        onPressed: () {
+                          setState(() { _isCardioRunning = false; _isCardioFinished = true; });
+                          _timer?.cancel();
+                          _stopLiveTracking(); // <-- STOPS SENSORS
+                        },
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                         child: const Text("END WALK", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
@@ -334,10 +480,14 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                   ],
                 ),
             ],
-            if (_isCardioFinished) ...[
+
+            // --- LIVE DATA DISPLAY (Shows while running AND at the end) ---
+            if (_isCardioRunning || _isCardioFinished) ...[
               const SizedBox(height: 30),
-              const Text("Workout Details", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              Text(_isCardioFinished ? "Final Details" : "Live Stats", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
+
+              // Notice we still use TextFields! If GPS fails, the user can manually type here at the end.
               TextField(
                 controller: _distanceCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -351,6 +501,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 decoration: InputDecoration(labelText: "Steps (Optional)", prefixIcon: const Icon(Icons.directions_walk), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
               ),
               const SizedBox(height: 20),
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -368,6 +519,9 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                   ),
                 ],
               ),
+            ],
+
+            if (_isCardioFinished) ...[
               const SizedBox(height: 40),
               SizedBox(
                 width: double.infinity, height: 60,
@@ -385,7 +539,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   }
 
   // ==========================================
-  // 9. STRENGTH UI BUILDER
+  // 10. STRENGTH UI BUILDER
   // ==========================================
   Widget _buildStrengthUI() {
     return Scaffold(
@@ -425,7 +579,6 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            // THE OVERFLOW FIX IS RIGHT HERE:
                             Expanded(
                               child: Text(ex.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                             ),

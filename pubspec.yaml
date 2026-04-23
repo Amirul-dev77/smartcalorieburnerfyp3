@@ -28,6 +28,7 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+
   flutter:
     sdk: flutter
   provider: ^6.0.0  # For state management
@@ -43,7 +44,9 @@ dependencies:
   cloud_firestore: ^6.1.1
   http: ^1.6.0
   simple_barcode_scanner: ^0.6.0
-
+  geolocator: ^11.0.0      # For GPS tracking
+  pedometer: ^4.0.1        # For Step counting
+  permission_handler: 12.0.1  # To ask the user for permission
 dev_dependencies:
   flutter_test:
     sdk: flutter
