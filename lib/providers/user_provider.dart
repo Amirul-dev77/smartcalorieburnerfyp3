@@ -10,7 +10,8 @@ class UserProvider with ChangeNotifier {
   String gender = "male";
   String activityLevel = "Moderate";
 
-  int age = 25;      // --- NEW: Added Age ---
+  int goal = 1;      // --- NEW: Added Goal (0: Fat Loss, 1: Maintain, 2: Muscle) ---
+  int age = 25;
   double height = 0; // cm
   double weight = 0; // kg
   double neck = 0;   // cm
@@ -25,7 +26,7 @@ class UserProvider with ChangeNotifier {
   double get bmi => _bmi;
   double get bodyFat => _bodyFat;
 
-  // --- NEW: DYNAMIC DAILY CALORIE GOAL (Mifflin-St Jeor) ---
+  // --- UPDATED: DYNAMIC DAILY CALORIE GOAL (Mifflin-St Jeor) ---
   int get calculatedDailyGoal {
     if (height == 0 || weight == 0) return 2200; // Fallback if data isn't loaded yet
 
@@ -47,15 +48,22 @@ class UserProvider with ChangeNotifier {
     }
 
     int tdee = (bmr * multiplier).round();
+    int targetCalorie;
 
-    // Subtracting 400 kcal is a standard deficit for getting lean
-    int cuttingGoal = tdee - 400;
+    // Apply the Goal Modifier dynamically
+    if (goal == 0) {
+      targetCalorie = tdee - 500; // Deficit for Fat Loss
+    } else if (goal == 2) {
+      targetCalorie = tdee + 300; // Surplus for Building Muscle
+    } else {
+      targetCalorie = tdee;       // Maintenance
+    }
 
     // Safety floors (Do not drop below healthy minimums)
-    if (gender.toLowerCase() == 'female' && cuttingGoal < 1200) return 1200;
-    if (gender.toLowerCase() == 'male' && cuttingGoal < 1500) return 1500;
+    if (gender.toLowerCase() == 'female' && targetCalorie < 1200) return 1200;
+    if (gender.toLowerCase() == 'male' && targetCalorie < 1500) return 1500;
 
-    return cuttingGoal;
+    return targetCalorie;
   }
 
   // --- CATEGORY LOGIC ---
@@ -113,7 +121,8 @@ class UserProvider with ChangeNotifier {
         gender = data['gender'] ?? "male";
         activityLevel = data['activityLevel'] ?? "Moderate";
 
-        age = data['age'] ?? 25; // --- NEW: Fetch Age ---
+        goal = data['goal'] ?? 1; // --- NEW: Fetch Goal ---
+        age = data['age'] ?? 25;
 
         height = (data['height'] ?? 0).toDouble();
         weight = (data['weight'] ?? 0).toDouble();
@@ -142,14 +151,14 @@ class UserProvider with ChangeNotifier {
     required double n,
     required double waistVal,
     double hipVal = 0,
-    int userAge = 25, // --- NEW: Added Age to Parameters ---
+    int userAge = 25,
   }) {
     weight = w;
     height = h;
     neck = n;
     waist = waistVal;
     hip = hipVal;
-    age = userAge;    // --- NEW: Update Age state ---
+    age = userAge;
 
     calculateMetrics();
     notifyListeners();

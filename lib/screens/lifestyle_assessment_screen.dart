@@ -7,7 +7,6 @@ import '../main.dart';
 import '../utils/calculator_logic.dart';
 
 class LifestyleAssessmentScreen extends StatefulWidget {
-  // Variables passed from the previous screen
   final String name;
   final int age;
   final String gender;
@@ -43,19 +42,29 @@ class _LifestyleAssessmentScreenState extends State<LifestyleAssessmentScreen> {
   int _goal = 0;
 
   Future<void> _calculateAndSave() async {
-    // 1. Determine the Lifestyle Level string
+    // 1. Calculate the Lifestyle String (e.g., "Moderate")
     String calculatedActivityLevel = CalculatorLogic.determineLifestyleExtended(
       workStyle: _workStyle,
       exerciseDays: _exerciseDays.toInt(),
       dailyMovement: _dailyMovement,
     );
 
+    // 2. Calculate the Target Calories
+    double bmr = CalculatorLogic.calculateBMR(
+        gender: widget.gender,
+        weight: widget.weight,
+        height: widget.height,
+        age: widget.age
+    );
+    double tdee = CalculatorLogic.calculateTDEE(bmr, calculatedActivityLevel);
+    double targetCalories = CalculatorLogic.calculateTargetCalories(tdee, _goal);
+
     double relevantWaist = (widget.gender == 'male') ? widget.abdomen : widget.waist;
 
     if (!mounted) return;
     final userProvider = Provider.of<UserProvider>(context, listen: false);
 
-    // 2. Update Provider
+    // 3. Update Local Provider
     userProvider.updateProfile(
       w: widget.weight,
       h: widget.height,
@@ -68,7 +77,7 @@ class _LifestyleAssessmentScreenState extends State<LifestyleAssessmentScreen> {
     userProvider.gender = widget.gender;
     userProvider.activityLevel = calculatedActivityLevel;
 
-    // 3. Save to Firebase
+    // 4. Save everything to Firebase
     try {
       showDialog(
           context: context,
@@ -89,7 +98,10 @@ class _LifestyleAssessmentScreenState extends State<LifestyleAssessmentScreen> {
           'waist': (widget.gender == 'female') ? widget.waist : 0,
           'hip': (widget.gender == 'female') ? widget.hip : 0,
           'abdomen': (widget.gender == 'male') ? widget.abdomen : 0,
-          'activityLevel': calculatedActivityLevel, // Use the dynamically calculated value
+          'activityLevel': calculatedActivityLevel,
+          'timeAvailability': _timeAvailability, // 0: 15min, 1: 30min, 2: 60min+
+          'goal': _goal,                         // 0: Fat Loss, 1: Maintain, 2: Muscle
+          'targetCalories': targetCalories.round(),
           'createdAt': FieldValue.serverTimestamp(),
         });
 
@@ -97,7 +109,7 @@ class _LifestyleAssessmentScreenState extends State<LifestyleAssessmentScreen> {
       }
 
       if (!mounted) return;
-      Navigator.of(context).pop(); // dismiss loading dialog
+      Navigator.of(context).pop();
 
       // Navigate to main app layout
       if (mounted) {
@@ -126,7 +138,7 @@ class _LifestyleAssessmentScreenState extends State<LifestyleAssessmentScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              "Let's determine your accurate activity level.",
+              "Let's customize your fitness plan.",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
@@ -167,9 +179,9 @@ class _LifestyleAssessmentScreenState extends State<LifestyleAssessmentScreen> {
                 spacing: 10,
                 runSpacing: 10,
                 children: [
-                  _buildChip("Minimal (Chilling)", 0, _dailyMovement, (val) => setState(() => _dailyMovement = val)),
-                  _buildChip("Moderate (Chores/Walking)", 1, _dailyMovement, (val) => setState(() => _dailyMovement = val)),
-                  _buildChip("High (Always moving)", 2, _dailyMovement, (val) => setState(() => _dailyMovement = val)),
+                  _buildChip("Minimal", 0, _dailyMovement, (val) => setState(() => _dailyMovement = val)),
+                  _buildChip("Moderate", 1, _dailyMovement, (val) => setState(() => _dailyMovement = val)),
+                  _buildChip("High", 2, _dailyMovement, (val) => setState(() => _dailyMovement = val)),
                 ],
               ),
             ),
@@ -208,7 +220,7 @@ class _LifestyleAssessmentScreenState extends State<LifestyleAssessmentScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text("Calculate & Continue", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              child: const Text("Calculate & Build My Plan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 40),
           ],
