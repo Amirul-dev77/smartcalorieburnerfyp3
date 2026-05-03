@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../providers/user_provider.dart';
-import '../main.dart';
+import 'lifestyle_assessment_screen.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   const ProfileSetupScreen({super.key});
@@ -14,7 +10,7 @@ class ProfileSetupScreen extends StatefulWidget {
 
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _nameController = TextEditingController();
-  final _ageController = TextEditingController(); // --- NEW ---
+  final _ageController = TextEditingController();
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
   final _neckController = TextEditingController();
@@ -23,16 +19,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _abdomenController = TextEditingController();
 
   String _selectedGender = 'male';
-  String _selectedActivity = 'Moderate';
-
-  final List<String> _activityLevels = [
-    'Sedentary', 'Light', 'Moderate', 'Active', 'Very Active'
-  ];
 
   @override
   void dispose() {
     _nameController.dispose();
-    _ageController.dispose(); // --- NEW ---
+    _ageController.dispose();
     _heightController.dispose();
     _weightController.dispose();
     _neckController.dispose();
@@ -42,13 +33,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     super.dispose();
   }
 
-  Future<void> _saveAndContinue() async {
-    // 1. Validation (Added Age)
+  void _goToNextStep() {
+    // Validate inputs before moving to the next screen
     if (_heightController.text.isEmpty || _weightController.text.isEmpty || _ageController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Age, Height, and Weight are required!")));
       return;
     }
-
     if (_neckController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Neck is required.")));
       return;
@@ -62,70 +52,27 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       return;
     }
 
+    // Parse values safely
     double parseD(String text) => double.tryParse(text) ?? 0.0;
-    int parseI(String text) => int.tryParse(text) ?? 25; // Helper for Age
+    int parseI(String text) => int.tryParse(text) ?? 25;
 
-    double relevantWaist = (_selectedGender == 'male')
-        ? parseD(_abdomenController.text)
-        : parseD(_waistController.text);
-
-    // 2. Update Provider
-    if (!mounted) return;
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-
-    userProvider.updateProfile(
-      w: parseD(_weightController.text),
-      h: parseD(_heightController.text),
-      n: parseD(_neckController.text),
-      waistVal: relevantWaist,
-      hipVal: (_selectedGender == 'female') ? parseD(_hipController.text) : 0,
-      userAge: parseI(_ageController.text), // --- NEW ---
+    // Navigate to Lifestyle Assessment and pass the data
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LifestyleAssessmentScreen(
+          name: _nameController.text,
+          age: parseI(_ageController.text),
+          gender: _selectedGender,
+          height: parseD(_heightController.text),
+          weight: parseD(_weightController.text),
+          neck: parseD(_neckController.text),
+          abdomen: parseD(_abdomenController.text),
+          waist: parseD(_waistController.text),
+          hip: parseD(_hipController.text),
+        ),
+      ),
     );
-    userProvider.name = _nameController.text;
-    userProvider.gender = _selectedGender;
-    userProvider.activityLevel = _selectedActivity;
-
-    // 3. Save to Firebase
-    try {
-      showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (c) => const Center(child: CircularProgressIndicator())
-      );
-
-      User? currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser != null) {
-        await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).set({
-          'name': _nameController.text,
-          'email': currentUser.email,
-          'gender': _selectedGender,
-          'age': parseI(_ageController.text), // --- NEW ---
-          'height': parseD(_heightController.text),
-          'weight': parseD(_weightController.text),
-          'neck': parseD(_neckController.text),
-          'waist': (_selectedGender == 'female') ? parseD(_waistController.text) : 0,
-          'hip': (_selectedGender == 'female') ? parseD(_hipController.text) : 0,
-          'abdomen': (_selectedGender == 'male') ? parseD(_abdomenController.text) : 0,
-          'activityLevel': _selectedActivity,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-
-        await currentUser.updateDisplayName(_nameController.text);
-      }
-
-      if (!mounted) return;
-      Navigator.of(context).pop();
-
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const MainScaffold()),
-              (route) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-    }
   }
 
   @override
@@ -147,7 +94,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             _buildTextField("Display Name", _nameController, icon: Icons.person),
             const SizedBox(height: 15),
 
-            // --- AGE AND GENDER ROW ---
             Row(
               children: [
                 Expanded(
@@ -184,7 +130,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             ]),
             const SizedBox(height: 25),
 
-            // ... The rest of your Body Measurement & Lifestyle code stays the same ...
             _buildSectionHeader("Body Measurement", primaryColor),
 
             _buildTextField("Neck (cm)", _neckController, isNum: true),
@@ -199,28 +144,20 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               _buildTextField("Hip (cm)", _hipController, isNum: true),
             ],
 
-            const SizedBox(height: 25),
-
-            _buildSectionHeader("Lifestyle", primaryColor),
-            DropdownButtonFormField<String>(
-              value: _selectedActivity,
-              decoration: const InputDecoration(labelText: "Activity Level", border: OutlineInputBorder(), prefixIcon: Icon(Icons.directions_run)),
-              items: _activityLevels.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
-              onChanged: (val) => setState(() => _selectedActivity = val!),
-            ),
-
             const SizedBox(height: 40),
+
+            // Replaced the calculate button with a "Next" button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _saveAndContinue,
+                onPressed: _goToNextStep,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                child: const Text("Calculate & Continue", style: TextStyle(fontSize: 18)),
+                child: const Text("Next: Lifestyle Assessment", style: TextStyle(fontSize: 18)),
               ),
             ),
           ],
@@ -231,7 +168,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   Widget _buildSectionHeader(String title, Color color) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 15.0),
+      padding: const EdgeInsets.only(bottom: 5.0),
       child: Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
     );
   }

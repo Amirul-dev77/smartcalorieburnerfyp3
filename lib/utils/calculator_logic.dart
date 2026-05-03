@@ -5,19 +5,19 @@ class CalculatorLogic {
   // Helper for Log10
   static double log10(num x) => log(x) / ln10;
 
-  // BMI Calculation [cite: 25]
+  // BMI Calculation
   // Weight in Kg, Height in cm (converted to meters)
   static double calculateBMI(double weightKg, double heightCm) {
     double heightM = heightCm / 100;
     return weightKg / (heightM * heightM);
   }
 
-  // US Navy Method Body Fat Calculation [cite: 31, 34]
+  // US Navy Method Body Fat Calculation
   static double calculateBodyFat({
     required String gender,
     required double heightCm,
     required double neckCm,
-    required double waistCm, // Represents Abdomen for men [cite: 17]
+    required double waistCm, // Represents Abdomen for men
     required double hipCm,
   }) {
     if (gender.toLowerCase() == 'male') {
@@ -36,5 +36,22 @@ class CalculatorLogic {
     if (bmi < 24.9) return "Normal";
     if (bmi < 29.9) return "Overweight";
     return "Obese";
+  }
+
+  // Extended Lifestyle Determination Logic
+  static String determineLifestyleExtended({
+    required int workStyle,     // 0: Sitting, 1: Mixed, 2: Active
+    required int exerciseDays,  // 0 to 7
+    required int dailyMovement, // 0: Minimal, 1: Moderate, 2: High
+  }) {
+    // Note: Goals and Time Availability don't change the TDEE multiplier,
+    // but they are gathered for customizing the user's future workout plans.
+    int score = (workStyle * 2) + exerciseDays + dailyMovement;
+
+    if (score <= 2) return 'Sedentary';
+    if (score <= 5) return 'Light';
+    if (score <= 8) return 'Moderate';
+    if (score <= 11) return 'Active';
+    return 'Very Active';
   }
 }
