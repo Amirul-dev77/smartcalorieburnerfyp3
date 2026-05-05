@@ -131,7 +131,6 @@ class _CalorieScreenState extends State<CalorieScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Discard")),
           ElevatedButton(
             onPressed: () async {
-              // 👉 THE MAGIC LINK: Pushes API result straight to Firebase!
               if (isFood) {
                 await Provider.of<UserProvider>(context, listen: false).saveMealToFirebase(name, calories);
               } else {
@@ -165,8 +164,7 @@ class _CalorieScreenState extends State<CalorieScreen> {
     double tdee = CalculatorLogic.calculateTDEE(bmr, userProvider.activityLevel);
     String todayDate = DateFormat.yMMMd().format(DateTime.now());
 
-    List<LogEntry> recentEntries = [...userProvider.todayMeals, ...userProvider.todayExercises];
-    recentEntries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    // We no longer need the recentEntries list here!
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -259,41 +257,42 @@ class _CalorieScreenState extends State<CalorieScreen> {
             ),
             const SizedBox(height: 30),
 
-            // --- RECENT ENTRIES ---
-            const Text("Recent Entries", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
+            // --- REPLACED: TODAY'S SUMMARY ---
+            const Text("Today's Summary", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 15),
 
-            Expanded(
-              child: recentEntries.isEmpty
-                  ? Center(child: Text("No entries yet today!", style: TextStyle(color: Colors.grey.shade500)))
-                  : ListView.builder(
-                itemCount: recentEntries.length > 4 ? 4 : recentEntries.length,
-                itemBuilder: (context, index) {
-                  final entry = recentEntries[index];
-                  bool isWorkout = entry.title == "Workout";
-                  return Card(
-                    elevation: 0,
-                    margin: const EdgeInsets.only(bottom: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade200)),
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: (isWorkout ? Colors.purple : Colors.orange).withOpacity(0.1), shape: BoxShape.circle),
-                        child: Icon(isWorkout ? Icons.fitness_center : Icons.restaurant, color: isWorkout ? Colors.purple : Colors.orange),
-                      ),
-                      title: Text(entry.subtitle, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      trailing: Text("${entry.calories} kcal", style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  );
-                },
-              ),
+            Row(
+              children: [
+                // Eaten Card
+                Expanded(
+                  child: _buildSummaryCard(
+                      "Eaten",
+                      "${userProvider.totalFoodConsumed} kcal",
+                      Icons.restaurant,
+                      Colors.orange
+                  ),
+                ),
+                const SizedBox(width: 15),
+                // Burned Card
+                Expanded(
+                  child: _buildSummaryCard(
+                      "Burned",
+                      "${userProvider.totalExerciseBurned} kcal",
+                      Icons.fitness_center,
+                      Colors.purple
+                  ),
+                ),
+              ],
             ),
+
+            const Spacer(), // Pushes everything nicely to the top
           ],
         ),
       ),
     );
   }
 
+  // --- WIDGET HELPERS ---
   Widget _buildStatColumn(String label, String value, CrossAxisAlignment alignment) {
     return Column(
       crossAxisAlignment: alignment,
@@ -319,6 +318,43 @@ class _CalorieScreenState extends State<CalorieScreen> {
             Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           ],
         ),
+      ),
+    );
+  }
+
+  // NEW: Helper for the Eaten / Burned summary cards
+  Widget _buildSummaryCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(color: Colors.grey.shade200, blurRadius: 10, offset: const Offset(0, 5))
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
