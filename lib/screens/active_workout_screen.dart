@@ -88,7 +88,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   StreamSubscription<StepCount>? _stepStream;
   Position? _lastPosition;
   double _liveDistanceKm = 0.0;
-  int _initialSteps = -1; // -1 means we haven't grabbed the starting steps yet
+  int _initialSteps = -1;
 
   @override
   void initState() {
@@ -118,7 +118,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    _stopLiveTracking(); // Clean up sensor streams to save battery!
+    _stopLiveTracking();
     _elapsedSeconds.dispose();
     _workoutStats.dispose();
     for (var ex in _exercises) {
@@ -146,29 +146,25 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   }
 
   // ==========================================
-  // 4. LIVE SENSOR LOGIC (NEW!)
+  // 4. LIVE SENSOR LOGIC
   // ==========================================
   Future<void> _startLiveTracking() async {
-    // 1. Request OS Permissions
     var locStatus = await Permission.location.request();
     var actStatus = await Permission.activityRecognition.request();
 
-    // 2. Start GPS Tracking
     if (locStatus.isGranted) {
-      // Use LocationSettings to only update when they move at least 5 meters (saves battery)
       _positionStream = Geolocator.getPositionStream(
           locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5)
       ).listen((Position position) {
         if (_lastPosition != null) {
-          // Calculate distance between last ping and current ping in meters
           double distanceInMeters = Geolocator.distanceBetween(
             _lastPosition!.latitude, _lastPosition!.longitude,
             position.latitude, position.longitude,
           );
 
           setState(() {
-            _liveDistanceKm += (distanceInMeters / 1000); // Convert to km
-            _distanceCtrl.text = _liveDistanceKm.toStringAsFixed(2); // Auto-fill the UI box!
+            _liveDistanceKm += (distanceInMeters / 1000);
+            _distanceCtrl.text = _liveDistanceKm.toStringAsFixed(2);
           });
         }
         _lastPosition = position;
@@ -177,16 +173,12 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("GPS access denied. Distance must be entered manually.")));
     }
 
-    // 3. Start Step Tracking
     if (actStatus.isGranted) {
       _stepStream = Pedometer.stepCountStream.listen((StepCount event) {
         setState(() {
-          // The pedometer counts total steps since the phone was turned on.
-          // We capture the starting number, and subtract it to get the session steps.
           if (_initialSteps == -1) _initialSteps = event.steps;
-
           int currentSessionSteps = event.steps - _initialSteps;
-          _stepsCtrl.text = currentSessionSteps.toString(); // Auto-fill the UI box!
+          _stepsCtrl.text = currentSessionSteps.toString();
         });
       });
     }
@@ -269,12 +261,20 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Complete at least one set!"), backgroundColor: Colors.orange));
       return;
     }
+
+    String title = widget.routine['title'] ?? "Strength Workout";
+    int calories = widget.routine['calories'] ?? 0;
+    int volume = _workoutStats.value['volume'] ?? 0;
+
+    // 👉 THE MAGIC LINK: Inject data into Global Diary Provider
+    Provider.of<UserProvider>(context, listen: false).addExercise(title, calories, volume);
+
     _saveToFirebase({
-      'title': widget.routine['title'],
-      'calories': widget.routine['calories'],
+      'title': title,
+      'calories': calories,
       'type': 'strength',
       'duration_seconds': _elapsedSeconds.value,
-      'volume_kg': _workoutStats.value['volume'],
+      'volume_kg': volume,
       'sets_completed': _workoutStats.value['sets'],
     });
   }
@@ -331,8 +331,14 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Workout too short to log!"), backgroundColor: Colors.orange));
       return;
     }
+
+    String title = widget.routine['title'] ?? "Cardio Workout";
+
+    // 👉 THE MAGIC LINK: Inject data into Global Diary Provider (Volume is 0 for cardio)
+    Provider.of<UserProvider>(context, listen: false).addExercise(title, _calculatedCalories, 0);
+
     _saveToFirebase({
-      'title': widget.routine['title'],
+      'title': title,
       'calories': _calculatedCalories,
       'type': 'cardio',
       'duration_seconds': _elapsedSeconds.value,
@@ -357,10 +363,10 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('calorie_logs').add(data);
 
       if (mounted) {
-        Navigator.pop(context);
-        Navigator.pop(context);
+        Navigator.pop(context); // Close loading dialog
+        Navigator.pop(context); // Close active workout screen
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Workout Logged successfully!"), backgroundColor: Colors.green),
+          const SnackBar(content: Text("Workout Logged successfully!"), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
@@ -445,7 +451,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                     onPressed: () {
                       setState(() { _isCardioRunning = true; });
                       _startTimer();
-                      _startLiveTracking(); // <-- TURNS ON SENSORS!
+                      _startLiveTracking();
                     },
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
                     child: const Text("START WALK", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
@@ -459,7 +465,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         onPressed: () {
                           setState(() { _isCardioRunning = false; });
                           _timer?.cancel();
-                          _stopLiveTracking(); // <-- PAUSES SENSORS
+                          _stopLiveTracking();
                         },
                         style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15), side: const BorderSide(color: Colors.orange, width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                         child: const Text("PAUSE", style: TextStyle(color: Colors.orange, fontSize: 16, fontWeight: FontWeight.bold)),
@@ -471,7 +477,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         onPressed: () {
                           setState(() { _isCardioRunning = false; _isCardioFinished = true; });
                           _timer?.cancel();
-                          _stopLiveTracking(); // <-- STOPS SENSORS
+                          _stopLiveTracking();
                         },
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                         child: const Text("END WALK", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
@@ -481,13 +487,12 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 ),
             ],
 
-            // --- LIVE DATA DISPLAY (Shows while running AND at the end) ---
+            // --- LIVE DATA DISPLAY ---
             if (_isCardioRunning || _isCardioFinished) ...[
               const SizedBox(height: 30),
               Text(_isCardioFinished ? "Final Details" : "Live Stats", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
 
-              // Notice we still use TextFields! If GPS fails, the user can manually type here at the end.
               TextField(
                 controller: _distanceCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),

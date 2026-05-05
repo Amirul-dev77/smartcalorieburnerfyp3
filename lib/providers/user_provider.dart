@@ -3,6 +3,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:math';
 
+// --- DATA MODEL FOR DIARY ENTRIES ---
+class LogEntry {
+  final String title;
+  final String subtitle;
+  final int calories;
+  final int volume; // Tracks weight lifted (kg)
+  final DateTime timestamp;
+
+  LogEntry({
+    required this.title,
+    required this.subtitle,
+    required this.calories,
+    this.volume = 0, // Default to 0 for food or cardio
+    required this.timestamp
+  });
+}
+
 class UserProvider with ChangeNotifier {
   // --- DATA VARIABLES ---
   String name = "Loading...";
@@ -10,7 +27,7 @@ class UserProvider with ChangeNotifier {
   String gender = "male";
   String activityLevel = "Moderate";
 
-  int goal = 1;      // --- NEW: Added Goal (0: Fat Loss, 1: Maintain, 2: Muscle) ---
+  int goal = 1;      // 0: Fat Loss, 1: Maintain, 2: Muscle
   int age = 25;
   double height = 0; // cm
   double weight = 0; // kg
@@ -26,7 +43,41 @@ class UserProvider with ChangeNotifier {
   double get bmi => _bmi;
   double get bodyFat => _bodyFat;
 
-  // --- UPDATED: DYNAMIC DAILY CALORIE GOAL (Mifflin-St Jeor) ---
+  // --- DIARY STATE MANAGEMENT ---
+  List<LogEntry> todayMeals = [];
+  List<LogEntry> todayExercises = [];
+
+  // Automatically sum up the calories and volume from the lists
+  int get totalFoodConsumed => todayMeals.fold(0, (sum, item) => sum + item.calories);
+  int get totalExerciseBurned => todayExercises.fold(0, (sum, item) => sum + item.calories);
+  int get totalWorkoutVolume => todayExercises.fold(0, (sum, item) => sum + item.volume);
+
+  // Calculate true remaining calories dynamically
+  int get remainingCalories => calculatedDailyGoal - totalFoodConsumed + totalExerciseBurned;
+
+  // Methods to add entries from the UI
+  void addMeal(String name, int calories) {
+    todayMeals.insert(0, LogEntry(
+        title: "Food",
+        subtitle: name,
+        calories: calories,
+        timestamp: DateTime.now()
+    ));
+    notifyListeners();
+  }
+
+  void addExercise(String name, int calories, int volume) {
+    todayExercises.insert(0, LogEntry(
+        title: "Workout",
+        subtitle: name,
+        calories: calories,
+        volume: volume,
+        timestamp: DateTime.now()
+    ));
+    notifyListeners();
+  }
+
+  // --- DYNAMIC DAILY CALORIE GOAL (Mifflin-St Jeor) ---
   int get calculatedDailyGoal {
     if (height == 0 || weight == 0) return 2200; // Fallback if data isn't loaded yet
 
@@ -44,7 +95,7 @@ class UserProvider with ChangeNotifier {
       case 'Moderate': multiplier = 1.55; break;
       case 'Active': multiplier = 1.725; break;
       case 'Very Active': multiplier = 1.9; break;
-      default: multiplier = 1.55; // Default
+      default: multiplier = 1.55;
     }
 
     int tdee = (bmr * multiplier).round();
@@ -78,7 +129,6 @@ class UserProvider with ChangeNotifier {
   String get bodyFatCategory {
     if (_bodyFat <= 0) return "-";
 
-    // Logic varies by gender
     if (gender.toLowerCase() == 'male') {
       if (_bodyFat < 6) return "Essential Fat";
       if (_bodyFat < 14) return "Athlete";
@@ -94,14 +144,13 @@ class UserProvider with ChangeNotifier {
     }
   }
 
-  // Helper to get color for the category (Green = Good, Red = Bad)
   Color get statusColor {
     if (bmiCategory == "Normal" || bmiCategory == "Fitness" || bmiCategory == "Athlete") {
       return Colors.greenAccent;
     } else if (bmiCategory == "Underweight" || bmiCategory == "Average") {
       return Colors.yellowAccent;
     } else {
-      return Colors.orangeAccent; // Overweight/Obese
+      return Colors.orangeAccent;
     }
   }
 
@@ -121,7 +170,7 @@ class UserProvider with ChangeNotifier {
         gender = data['gender'] ?? "male";
         activityLevel = data['activityLevel'] ?? "Moderate";
 
-        goal = data['goal'] ?? 1; // --- NEW: Fetch Goal ---
+        goal = data['goal'] ?? 1;
         age = data['age'] ?? 25;
 
         height = (data['height'] ?? 0).toDouble();
@@ -129,7 +178,6 @@ class UserProvider with ChangeNotifier {
         neck = (data['neck'] ?? 0).toDouble();
         hip = (data['hip'] ?? 0).toDouble();
 
-        // Check Gender to pick correct waist field
         if (gender.toLowerCase() == 'male') {
           waist = (data['abdomen'] ?? data['waist'] ?? 0).toDouble();
         } else {
