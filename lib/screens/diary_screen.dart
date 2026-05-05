@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/user_provider.dart';
-import 'workout_screen.dart'; // IMPORTANT: Import the workout screen!
+import 'workout_screen.dart'; // Routes to your main workout hub
 
 class DiaryScreen extends StatefulWidget {
   const DiaryScreen({super.key});
@@ -17,6 +17,8 @@ class _DiaryScreenState extends State<DiaryScreen> {
   void _changeDate(int days) {
     setState(() {
       selectedDate = selectedDate.add(Duration(days: days));
+      // NOTE: If you want to fetch historical data when the date changes,
+      // you can add a new fetch method in UserProvider later!
     });
   }
 
@@ -38,13 +40,14 @@ class _DiaryScreenState extends State<DiaryScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (nameController.text.isNotEmpty && calController.text.isNotEmpty) {
-                Provider.of<UserProvider>(context, listen: false).addMeal(
+                // 👉 THE MAGIC LINK: Saves to Firebase and updates UI instantly
+                await Provider.of<UserProvider>(context, listen: false).saveMealToFirebase(
                     nameController.text,
                     int.parse(calController.text)
                 );
-                Navigator.pop(context);
+                if (mounted) Navigator.pop(context);
               }
             },
             child: const Text("Add"),
@@ -183,8 +186,8 @@ class _DiaryScreenState extends State<DiaryScreen> {
             const SizedBox(height: 30),
 
             // --- 4. EXERCISE LIST ---
-            // THE NEW NAVIGATION: Pushes directly to the Active Workout Screen!
             _buildSectionHeader("Exercise", "${userProvider.totalExerciseBurned} kcal", () {
+              // 👉 Safely navigates to the Workout Hub so user can pick a routine!
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const WorkoutScreen()),
@@ -201,7 +204,6 @@ class _DiaryScreenState extends State<DiaryScreen> {
   }
 
   // --- HELPER WIDGETS ---
-
   Widget _buildMathColumn(String label, String value, Color valueColor) {
     return Column(
       children: [

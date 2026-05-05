@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-// import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
+import 'package:simple_barcode_scanner/simple_barcode_scanner.dart';
 
 import '../providers/user_provider.dart';
 import '../utils/calculator_logic.dart';
@@ -22,7 +22,7 @@ class _CalorieScreenState extends State<CalorieScreen> {
   Future<void> _searchFoodWithCalorieNinja(String foodQuery) async {
     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
 
-    const String apiKey = 'Xo5aaPKG8n+yWPPyj2L9Yw==yGp3Ve3SBX9084js';
+    const String apiKey = 'Xo5aaPKG8n+yWPPyj2L9Yw==yGp3Ve3SBX9084js'; // 👉 PASTE YOUR KEY HERE
     final url = Uri.parse('https://api.calorieninjas.com/v1/nutrition?query=$foodQuery');
 
     try {
@@ -49,33 +49,50 @@ class _CalorieScreenState extends State<CalorieScreen> {
   // --- API 2: OPEN FOOD FACTS ---
   Future<void> _scanBarcodeWithFoodFacts() async {
     try {
-      // String barcodeScanRes = await FlutterBarcodeScanner.scanBarcode("#ff6666", "Cancel", true, ScanMode.BARCODE);
-      // if (barcodeScanRes == '-1') return;
+      String? barcodeScanRes = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const SimpleBarcodeScannerPage()),
+      );
 
-      String barcodeScanRes = "737628064502"; // Dummy barcode
+      if (barcodeScanRes == null || barcodeScanRes == '-1') return;
 
+      debugPrint("🔍 SCANNED BARCODE: $barcodeScanRes");
       showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
 
       final url = Uri.parse('https://world.openfoodfacts.org/api/v0/product/$barcodeScanRes.json');
       final response = await http.get(url);
 
       Navigator.pop(context);
+      debugPrint("🔍 API STATUS CODE: ${response.statusCode}");
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['status'] == 1) {
+
+        if (data['status'] == 1 && data['product'] != null) {
           final product = data['product'];
           String productName = product['product_name'] ?? "Unknown Product";
-          var nutriments = product['nutriments'];
-          dynamic energyKcal = nutriments['energy-kcal_100g'] ?? nutriments['energy-kcal_serving'] ?? 0;
 
-          _showResultDialog(productName, (energyKcal as num).round(), true);
+          var nutriments = product['nutriments'];
+          if (nutriments != null) {
+            dynamic energyKcal = nutriments['energy-kcal_100g'] ?? nutriments['energy-kcal_serving'] ?? nutriments['energy-kcal'] ?? 0;
+
+            if (energyKcal == 0) {
+              _showError("Found '$productName', but no calorie data is listed!");
+            } else {
+              _showResultDialog(productName, (energyKcal as num).round(), true);
+            }
+          } else {
+            _showError("Found '$productName', but nutrition facts are empty!");
+          }
         } else {
-          _showError("Product not found in Open Food Facts database.");
+          _showError("Product not found in the global database.");
         }
+      } else {
+        _showError("Server Error: ${response.statusCode}");
       }
     } catch (e) {
-      _showError("Failed to scan or fetch data.");
+      debugPrint("🔍 SCAN CRASH ERROR: $e");
+      _showError("Failed to scan. Error: $e");
     }
   }
 
@@ -88,7 +105,7 @@ class _CalorieScreenState extends State<CalorieScreen> {
         title: const Text("What did you eat?"),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(hintText: "e.g., 2 boiled eggs"),
+          decoration: const InputDecoration(hintText: "e.g., 2 boiled eggs and 1 apple"),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
@@ -104,7 +121,6 @@ class _CalorieScreenState extends State<CalorieScreen> {
     );
   }
 
-  // UPDATED: Now actually saves to the provider!
   void _showResultDialog(String name, int calories, bool isFood) {
     showDialog(
       context: context,
@@ -114,14 +130,14 @@ class _CalorieScreenState extends State<CalorieScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Discard")),
           ElevatedButton(
-            onPressed: () {
-              // 👉 THIS IS THE MAGIC LINK: Save to Provider
+            onPressed: () async {
+              // 👉 THE MAGIC LINK: Pushes API result straight to Firebase!
               if (isFood) {
-                Provider.of<UserProvider>(context, listen: false).addMeal(name, calories);
+                await Provider.of<UserProvider>(context, listen: false).saveMealToFirebase(name, calories);
               } else {
-                Provider.of<UserProvider>(context, listen: false).addExercise(name, calories, 0);
+                await Provider.of<UserProvider>(context, listen: false).saveExerciseToFirebase(name, calories, 0);
               }
-              Navigator.pop(context);
+              if (mounted) Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Added $calories kcal to Diary!"), backgroundColor: Colors.green));
             },
             child: const Text("Add to Diary"),
@@ -149,7 +165,6 @@ class _CalorieScreenState extends State<CalorieScreen> {
     double tdee = CalculatorLogic.calculateTDEE(bmr, userProvider.activityLevel);
     String todayDate = DateFormat.yMMMd().format(DateTime.now());
 
-    // Combine meals and exercises, sort by newest
     List<LogEntry> recentEntries = [...userProvider.todayMeals, ...userProvider.todayExercises];
     recentEntries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
@@ -167,6 +182,7 @@ class _CalorieScreenState extends State<CalorieScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -176,7 +192,7 @@ class _CalorieScreenState extends State<CalorieScreen> {
             ),
             const SizedBox(height: 20),
 
-            // --- Purple Card ---
+            // --- Purple Dashboard Card ---
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -203,7 +219,6 @@ class _CalorieScreenState extends State<CalorieScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      // UPDATED: Now shows the REAL dynamic remaining calories
                       Text("${userProvider.remainingCalories}", style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
                       Container(
                         padding: const EdgeInsets.all(8),
@@ -248,12 +263,11 @@ class _CalorieScreenState extends State<CalorieScreen> {
             const Text("Recent Entries", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
 
-            // Show recent items from Provider
             Expanded(
               child: recentEntries.isEmpty
                   ? Center(child: Text("No entries yet today!", style: TextStyle(color: Colors.grey.shade500)))
                   : ListView.builder(
-                itemCount: recentEntries.length > 4 ? 4 : recentEntries.length, // Show up to 4 recent
+                itemCount: recentEntries.length > 4 ? 4 : recentEntries.length,
                 itemBuilder: (context, index) {
                   final entry = recentEntries[index];
                   bool isWorkout = entry.title == "Workout";
