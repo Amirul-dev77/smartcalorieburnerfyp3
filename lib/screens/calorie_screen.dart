@@ -131,10 +131,13 @@ class _CalorieScreenState extends State<CalorieScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Discard")),
           ElevatedButton(
             onPressed: () async {
+              // 👉 INJECT DIRECTLY INTO PROVIDER FOR TODAY
               if (isFood) {
-                await Provider.of<UserProvider>(context, listen: false).saveMealToFirebase(name, calories);
+                await Provider.of<UserProvider>(context, listen: false)
+                    .saveMealToFirebase(name, calories, DateTime.now());
               } else {
-                await Provider.of<UserProvider>(context, listen: false).saveExerciseToFirebase(name, calories, 0);
+                await Provider.of<UserProvider>(context, listen: false)
+                    .saveExerciseToFirebase(name, calories, 0, DateTime.now());
               }
               if (mounted) Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Added $calories kcal to Diary!"), backgroundColor: Colors.green));
@@ -163,8 +166,6 @@ class _CalorieScreenState extends State<CalorieScreen> {
     double bmr = CalculatorLogic.calculateBMR(gender: userProvider.gender, weight: userProvider.weight, height: userProvider.height, age: userProvider.age);
     double tdee = CalculatorLogic.calculateTDEE(bmr, userProvider.activityLevel);
     String todayDate = DateFormat.yMMMd().format(DateTime.now());
-
-    // We no longer need the recentEntries list here!
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -257,13 +258,12 @@ class _CalorieScreenState extends State<CalorieScreen> {
             ),
             const SizedBox(height: 30),
 
-            // --- REPLACED: TODAY'S SUMMARY ---
+            // --- TODAY'S SUMMARY ---
             const Text("Today's Summary", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
 
             Row(
               children: [
-                // Eaten Card
                 Expanded(
                   child: _buildSummaryCard(
                       "Eaten",
@@ -273,7 +273,6 @@ class _CalorieScreenState extends State<CalorieScreen> {
                   ),
                 ),
                 const SizedBox(width: 15),
-                // Burned Card
                 Expanded(
                   child: _buildSummaryCard(
                       "Burned",
@@ -285,7 +284,7 @@ class _CalorieScreenState extends State<CalorieScreen> {
               ],
             ),
 
-            const Spacer(), // Pushes everything nicely to the top
+            const Spacer(),
           ],
         ),
       ),
@@ -322,7 +321,6 @@ class _CalorieScreenState extends State<CalorieScreen> {
     );
   }
 
-  // NEW: Helper for the Eaten / Burned summary cards
   Widget _buildSummaryCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(15),

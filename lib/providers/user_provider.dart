@@ -62,23 +62,24 @@ class UserProvider with ChangeNotifier {
   }
 
   // ==========================================
-  // --- NEW: FIREBASE SYNC METHODS ---
+  // --- FIREBASE SYNC METHODS (TIME-TRAVEL) ---
   // ==========================================
 
-  // 1. Fetch Today's Data on App Load
-  Future<void> fetchTodayLogs() async {
+  // 1. Fetch Logs for a SPECIFIC Date
+  Future<void> fetchLogsForDate(DateTime date) async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    DateTime now = DateTime.now();
-    DateTime startOfToday = DateTime(now.year, now.month, now.day);
+    DateTime startOfDay = DateTime(date.year, date.month, date.day);
+    DateTime endOfDay = startOfDay.add(const Duration(days: 1));
 
     try {
       QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('calorie_logs')
-          .where('timestamp', isGreaterThanOrEqualTo: startOfToday)
+          .where('timestamp', isGreaterThanOrEqualTo: startOfDay)
+          .where('timestamp', isLessThan: endOfDay)
           .orderBy('timestamp', descending: true)
           .get();
 
@@ -102,38 +103,44 @@ class UserProvider with ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
-      debugPrint("Error fetching today's logs: $e");
+      debugPrint("Error fetching logs for date: $e");
     }
   }
 
-  // 2. Save Manual Meal to Firebase
-  Future<void> saveMealToFirebase(String name, int calories) async {
-    addMeal(name, calories); // Update UI instantly so it feels fast
-
+  // 2. Save Manual Meal (Handles Historical Dates)
+  Future<void> saveMealToFirebase(String name, int calories, DateTime logDate) async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      DateTime timestampToSave = (logDate.day == DateTime.now().day && logDate.month == DateTime.now().month && logDate.year == DateTime.now().year)
+          ? DateTime.now()
+          : DateTime(logDate.year, logDate.month, logDate.day, 12, 0);
+
       await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('calorie_logs').add({
         'title': name,
         'calories': calories,
         'type': 'food',
-        'timestamp': FieldValue.serverTimestamp(),
+        'timestamp': timestampToSave,
       });
+      await fetchLogsForDate(logDate);
     }
   }
 
-  // 3. Save Manual Exercise to Firebase
-  Future<void> saveExerciseToFirebase(String name, int calories, int volume) async {
-    addExercise(name, calories, volume); // Update UI instantly
-
+  // 3. Save Manual Exercise (Handles Historical Dates)
+  Future<void> saveExerciseToFirebase(String name, int calories, int volume, DateTime logDate) async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      DateTime timestampToSave = (logDate.day == DateTime.now().day && logDate.month == DateTime.now().month && logDate.year == DateTime.now().year)
+          ? DateTime.now()
+          : DateTime(logDate.year, logDate.month, logDate.day, 12, 0);
+
       await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('calorie_logs').add({
         'title': name,
         'calories': calories,
         'volume_kg': volume,
         'type': 'manual_exercise',
-        'timestamp': FieldValue.serverTimestamp(),
+        'timestamp': timestampToSave,
       });
+      await fetchLogsForDate(logDate);
     }
   }
 
@@ -190,8 +197,8 @@ class UserProvider with ChangeNotifier {
         calculateMetrics();
         notifyListeners();
 
-        // 👉 THE FIX: FETCH DIARY LOGS AFTER PROFILE LOADS
-        await fetchTodayLogs();
+        // Fetch logs for today immediately upon loading profile
+        await fetchLogsForDate(DateTime.now());
       }
     } catch (e) {
       debugPrint("Error fetching user data: $e");

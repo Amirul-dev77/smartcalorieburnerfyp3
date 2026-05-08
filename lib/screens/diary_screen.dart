@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/user_provider.dart';
-import 'workout_screen.dart'; // Routes to your main workout hub
+import 'workout_screen.dart';
 
 class DiaryScreen extends StatefulWidget {
   const DiaryScreen({super.key});
@@ -14,12 +14,12 @@ class DiaryScreen extends StatefulWidget {
 class _DiaryScreenState extends State<DiaryScreen> {
   DateTime selectedDate = DateTime.now();
 
-  void _changeDate(int days) {
+  void _changeDate(int days) async {
     setState(() {
       selectedDate = selectedDate.add(Duration(days: days));
-      // NOTE: If you want to fetch historical data when the date changes,
-      // you can add a new fetch method in UserProvider later!
     });
+    // Fetch historical data for the newly selected date from Firebase
+    await Provider.of<UserProvider>(context, listen: false).fetchLogsForDate(selectedDate);
   }
 
   void _showAddMealDialog() {
@@ -42,10 +42,11 @@ class _DiaryScreenState extends State<DiaryScreen> {
           ElevatedButton(
             onPressed: () async {
               if (nameController.text.isNotEmpty && calController.text.isNotEmpty) {
-                // 👉 THE MAGIC LINK: Saves to Firebase and updates UI instantly
+                // Saves to Firebase on the currently selected date
                 await Provider.of<UserProvider>(context, listen: false).saveMealToFirebase(
                     nameController.text,
-                    int.parse(calController.text)
+                    int.parse(calController.text),
+                    selectedDate
                 );
                 if (mounted) Navigator.pop(context);
               }
@@ -76,6 +77,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // --- Date Navigator ---
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -132,6 +134,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
                 children: [
+                  // Graph 1: Daily Calories
                   _buildReportCard(
                     title: "Daily Calories",
                     subtitle: "vs. Target",
@@ -141,6 +144,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
                       color: Colors.orange,
                     ),
                   ),
+                  // Graph 2: Net Calories
                   _buildReportCard(
                     title: "Net Calories",
                     subtitle: "Consumed - Burned",
@@ -155,11 +159,13 @@ class _DiaryScreenState extends State<DiaryScreen> {
                       ),
                     ),
                   ),
+                  // Graph 3: Workout Volume
                   _buildReportCard(
                     title: "Workout Volume",
                     subtitle: "Today's Total Lifted",
                     child: _buildDynamicVolumeCard(userProvider.totalWorkoutVolume),
                   ),
+                  // Graph 4: Combined Activity
                   _buildReportCard(
                     title: "Combined Activity",
                     subtitle: "Food vs Burned",
@@ -167,9 +173,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        _buildSingleBar(userProvider.totalFoodConsumed.toDouble() / 20, Colors.orange, "Eaten"),
+                        _buildSingleBar(userProvider.totalFoodConsumed.toDouble(), Colors.orange, "Eaten"),
                         const SizedBox(width: 20),
-                        _buildSingleBar(userProvider.totalExerciseBurned.toDouble() / 20, Colors.purple, "Burned"),
+                        _buildSingleBar(userProvider.totalExerciseBurned.toDouble(), Colors.purple, "Burned"),
                       ],
                     ),
                   ),
@@ -187,7 +193,6 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
             // --- 4. EXERCISE LIST ---
             _buildSectionHeader("Exercise", "${userProvider.totalExerciseBurned} kcal", () {
-              // 👉 Safely navigates to the Workout Hub so user can pick a routine!
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const WorkoutScreen()),
@@ -204,6 +209,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
   }
 
   // --- HELPER WIDGETS ---
+
   Widget _buildMathColumn(String label, String value, Color valueColor) {
     return Column(
       children: [
@@ -273,37 +279,83 @@ class _DiaryScreenState extends State<DiaryScreen> {
     );
   }
 
+  // UPDATED: Original target line placement (80% / 125%) with side-by-side values & EXACT width match
   Widget _buildMockBarChart({required double value, required double target, required Color color}) {
-    double fillPercentage = target > 0 ? (value / target).clamp(0.0, 1.0) : 0.0;
-    return Stack(
-      alignment: Alignment.bottomCenter,
+    // Math fix: Grey bar is 125% of target. Red line is at 80% (which equals 100% target).
+    double fillPercentage = target > 0 ? (value / target) : 0.0;
+    double displayPercentage = (fillPercentage * 0.8).clamp(0.0, 1.0);
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        Container(
-          width: 40,
-          decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(10)),
-        ),
-        FractionallySizedBox(
-          heightFactor: fillPercentage,
-          child: Container(
-            width: 40,
-            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+        // 1. The Bar Chart
+        SizedBox(
+          width: 50,
+          child: Stack(
+            alignment: Alignment.bottomCenter,
+            children: [
+              // Grey Background (Represents 125% so there is headroom)
+              Container(
+                width: 35,
+                decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+              ),
+              // Colored Fill (Dynamically scales to hit the red line at 100%)
+              FractionallySizedBox(
+                alignment: Alignment.bottomCenter,
+                heightFactor: displayPercentage,
+                child: Container(
+                  width: 35,
+                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+              // Red Target Line (Anchored perfectly at 80% of the grey bar's height)
+              FractionallySizedBox(
+                alignment: Alignment.bottomCenter,
+                heightFactor: 0.8,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: Container(
+                      height: 3,
+                      width: 35, // FIXED: Now exactly matches the 35 width of the grey bar!
+                      decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(2))
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        Positioned(
-          bottom: 80,
-          child: Container(height: 2, width: 60, color: Colors.redAccent),
+
+        // 2. The Numerical Stats Beside the Graph
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("${value.toInt()}", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: color)),
+            const Text("Consumed", style: TextStyle(fontSize: 11, color: Colors.grey)),
+            const SizedBox(height: 10),
+            Text("${target.toInt()}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.redAccent)),
+            const Text("Target", style: TextStyle(fontSize: 11, color: Colors.grey)),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildSingleBar(double height, Color color, String label) {
+  // Accepts the raw value and scales it internally so the exact number can be printed
+  Widget _buildSingleBar(double value, Color color, String label) {
+    double displayHeight = (value / 20).clamp(0.0, 80.0);
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
+        Text(
+            "${value.toInt()}",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: color)
+        ),
+        const SizedBox(height: 4),
         Container(
           width: 30,
-          height: height.clamp(0.0, 80.0),
+          height: displayHeight,
           decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(5)),
         ),
         const SizedBox(height: 5),
