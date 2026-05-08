@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
-import 'workout_screen.dart'; // To navigate to the workout screen
+import 'workout_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -93,9 +93,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-      // 👉 FIX: Wrapped the entire layout in a SingleChildScrollView
           : SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
+        // 👉 FIX 1: Enhanced scroll physics for a buttery smooth feel
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         child: Column(
           children: [
             // --- HEVY-STYLE MONTHLY STATS ---
@@ -125,6 +125,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 lastDay: DateTime.utc(2030, 12, 31),
                 focusedDay: _focusedDay,
                 selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+
+                // 👉 FIX 2: Prevents the calendar from eating vertical scrolls!
+                availableGestures: AvailableGestures.horizontalSwipe,
+
                 onDaySelected: (selectedDay, focusedDay) {
                   setState(() {
                     _selectedDay = selectedDay;
@@ -140,19 +144,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   });
                 },
                 eventLoader: _getEventsForDay,
-
-                // 👉 BONUS FIX: Hides the default overlapping dots!
-                calendarStyle: const CalendarStyle(
-                  markersMaxCount: 0,
-                ),
-
+                calendarStyle: const CalendarStyle(markersMaxCount: 0),
                 headerStyle: const HeaderStyle(
                   formatButtonVisible: false,
                   titleCentered: true,
                   titleTextStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepPurple),
                 ),
                 rowHeight: 70,
-
                 calendarBuilders: CalendarBuilders(
                   defaultBuilder: (context, day, focusedDay) => _buildCalendarDay(day, isSelected: false),
                   selectedBuilder: (context, day, focusedDay) => _buildCalendarDay(day, isSelected: true),
@@ -164,10 +162,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             const SizedBox(height: 20),
 
             // --- SELECTED DAY ACTIVITY LIST ---
-            // 👉 FIX: Removed "Expanded" so it scrolls with the whole page
             Container(
               width: double.infinity,
-              // Added bottom padding so the list doesn't get hidden behind the Floating Action Button
               padding: const EdgeInsets.only(top: 20, left: 20, right: 20, bottom: 100),
               decoration: const BoxDecoration(
                 color: Colors.white,
@@ -196,7 +192,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     ),
                   )
-                  // 👉 FIX: Added shrinkWrap & NeverScrollableScrollPhysics
                       : ListView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
