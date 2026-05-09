@@ -64,16 +64,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       'lifestyle': ['Sedentary', 'Light', 'Moderate'],
       'bmi': ['Overweight', 'Obese', 'Normal', 'Underweight'], // Great low-impact cardio for everyone
     },
-    {
-      'title': 'Light Stretching',
-      'type': 'cardio',
-      'desc': 'Full body mobility and static stretching',
-      'calories': 80,
-      'duration': '15 mins',
-      'icon': FontAwesomeIcons.personPraying,
-      'lifestyle': ['Sedentary', 'Light'],
-      'bmi': ['Underweight', 'Normal', 'Overweight', 'Obese'],
-    },
+    // Light Stretching has been removed!
   ];
 
   @override
@@ -83,9 +74,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     final userLifestyle = userProvider.activityLevel;
 
     // IMPORTANT: Get BMI from provider.
-    // If your provider only has weight (kg) and height (cm), calculate it like this:
-    // double h = userProvider.height / 100;
-    // double userBmi = userProvider.weight / (h * h);
     final double userBmi = userProvider.bmi;
 
     // --- 3. DETERMINE BMI CATEGORY ---

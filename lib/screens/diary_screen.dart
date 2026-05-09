@@ -63,6 +63,14 @@ class _DiaryScreenState extends State<DiaryScreen> {
     final userProvider = Provider.of<UserProvider>(context);
     int remaining = userProvider.remainingCalories;
 
+    // Calculate total cardio metrics for the day
+    double totalDistance = 0.0;
+    int totalSteps = 0;
+    for (var ex in userProvider.todayExercises) {
+      totalDistance += ex.distance;
+      totalSteps += ex.steps;
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
@@ -165,7 +173,13 @@ class _DiaryScreenState extends State<DiaryScreen> {
                     subtitle: "Today's Total Lifted",
                     child: _buildDynamicVolumeCard(userProvider.totalWorkoutVolume),
                   ),
-                  // Graph 4: Combined Activity
+                  // Graph 4: Cardio Stats (NEW)
+                  _buildReportCard(
+                    title: "Cardio Activity",
+                    subtitle: "Distance & Steps",
+                    child: _buildCardioStatsCard(totalDistance, totalSteps),
+                  ),
+                  // Graph 5: Combined Activity
                   _buildReportCard(
                     title: "Combined Activity",
                     subtitle: "Food vs Burned",
@@ -199,7 +213,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
               );
             }),
             if (userProvider.todayExercises.isEmpty) const Text("No exercises logged yet.", style: TextStyle(color: Colors.grey)),
-            ...userProvider.todayExercises.map((ex) => _buildLogCard(Icons.fitness_center, ex.title, ex.subtitle, "${ex.calories} kcal (Vol: ${ex.volume}kg)", Colors.purple)).toList(),
+
+            // Render beautiful mini-containers for exercise logs
+            ...userProvider.todayExercises.map((ex) => _buildExerciseCard(ex)).toList(),
 
             const SizedBox(height: 40),
           ],
@@ -257,6 +273,71 @@ class _DiaryScreenState extends State<DiaryScreen> {
     );
   }
 
+  // NEW: Specialized card builder that places volume, distance, and steps in mini-containers
+  Widget _buildExerciseCard(LogEntry ex) {
+    List<Widget> metricChips = [];
+
+    // Determine the name to display (fallback to 'Workout' if subtitle is empty)
+    String displayTitle = (ex.title == "Workout" && ex.subtitle.isNotEmpty) ? ex.subtitle : ex.title;
+
+    if (ex.volume > 0) {
+      metricChips.add(_buildMiniChip(Icons.fitness_center, "${ex.volume} kg", Colors.purple));
+    }
+    if (ex.distance > 0) {
+      metricChips.add(_buildMiniChip(Icons.map, "${ex.distance.toStringAsFixed(2)} km", Colors.green));
+    }
+    if (ex.steps > 0) {
+      metricChips.add(_buildMiniChip(Icons.directions_walk, "${ex.steps} steps", Colors.blue));
+    }
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 10),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade200)),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+              color: metricChips.isNotEmpty && ex.volume == 0 ? Colors.green.withOpacity(0.1) : Colors.purple.withOpacity(0.1),
+              shape: BoxShape.circle
+          ),
+          child: Icon(
+              metricChips.isNotEmpty && ex.volume == 0 ? Icons.directions_run : Icons.fitness_center,
+              color: metricChips.isNotEmpty && ex.volume == 0 ? Colors.green : Colors.purple
+          ),
+        ),
+        title: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: metricChips.isNotEmpty
+            ? Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Wrap(spacing: 8, runSpacing: 8, children: metricChips),
+        )
+            : const Text("Workout Completed", style: TextStyle(color: Colors.black54)),
+        trailing: Text("${ex.calories} kcal", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      ),
+    );
+  }
+
+  // Helper to build the colored tags inside the list item
+  Widget _buildMiniChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildReportCard({required String title, required String subtitle, required Widget child}) {
     return Container(
       width: 260,
@@ -279,27 +360,22 @@ class _DiaryScreenState extends State<DiaryScreen> {
     );
   }
 
-  // UPDATED: Original target line placement (80% / 125%) with side-by-side values & EXACT width match
   Widget _buildMockBarChart({required double value, required double target, required Color color}) {
-    // Math fix: Grey bar is 125% of target. Red line is at 80% (which equals 100% target).
     double fillPercentage = target > 0 ? (value / target) : 0.0;
     double displayPercentage = (fillPercentage * 0.8).clamp(0.0, 1.0);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        // 1. The Bar Chart
         SizedBox(
           width: 50,
           child: Stack(
             alignment: Alignment.bottomCenter,
             children: [
-              // Grey Background (Represents 125% so there is headroom)
               Container(
                 width: 35,
                 decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
               ),
-              // Colored Fill (Dynamically scales to hit the red line at 100%)
               FractionallySizedBox(
                 alignment: Alignment.bottomCenter,
                 heightFactor: displayPercentage,
@@ -308,7 +384,6 @@ class _DiaryScreenState extends State<DiaryScreen> {
                   decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
                 ),
               ),
-              // Red Target Line (Anchored perfectly at 80% of the grey bar's height)
               FractionallySizedBox(
                 alignment: Alignment.bottomCenter,
                 heightFactor: 0.8,
@@ -316,7 +391,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
                   alignment: Alignment.topCenter,
                   child: Container(
                       height: 3,
-                      width: 35, // FIXED: Now exactly matches the 35 width of the grey bar!
+                      width: 35,
                       decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(2))
                   ),
                 ),
@@ -324,8 +399,6 @@ class _DiaryScreenState extends State<DiaryScreen> {
             ],
           ),
         ),
-
-        // 2. The Numerical Stats Beside the Graph
         Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -341,7 +414,6 @@ class _DiaryScreenState extends State<DiaryScreen> {
     );
   }
 
-  // Accepts the raw value and scales it internally so the exact number can be printed
   Widget _buildSingleBar(double value, Color color, String label) {
     double displayHeight = (value / 20).clamp(0.0, 80.0);
 
@@ -387,6 +459,42 @@ class _DiaryScreenState extends State<DiaryScreen> {
               const Text("kg lifted", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
             ],
           )
+        ],
+      ),
+    );
+  }
+
+  // NEW: Report card specifically for Distance and Steps
+  Widget _buildCardioStatsCard(double distance, int steps) {
+    if (distance == 0 && steps == 0) {
+      return const Center(
+        child: Text("No cardio logged today.", style: TextStyle(color: Colors.grey)),
+      );
+    }
+    return Center(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.map, color: Colors.green, size: 28),
+              const SizedBox(height: 5),
+              Text(distance.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: Colors.green)),
+              const Text("km", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),
+            ],
+          ),
+          Container(width: 1, height: 40, color: Colors.grey.shade300),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.directions_walk, color: Colors.blueAccent, size: 28),
+              const SizedBox(height: 5),
+              Text("$steps", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: Colors.blueAccent)),
+              const Text("steps", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),
+            ],
+          ),
         ],
       ),
     );

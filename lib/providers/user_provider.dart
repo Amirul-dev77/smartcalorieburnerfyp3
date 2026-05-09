@@ -9,6 +9,8 @@ class LogEntry {
   final String subtitle;
   final int calories;
   final int volume;
+  final double distance; // NEW: Tracks km for cardio
+  final int steps;       // NEW: Tracks steps for cardio
   final DateTime timestamp;
 
   LogEntry({
@@ -16,6 +18,8 @@ class LogEntry {
     required this.subtitle,
     required this.calories,
     this.volume = 0,
+    this.distance = 0.0,
+    this.steps = 0,
     required this.timestamp
   });
 }
@@ -50,14 +54,23 @@ class UserProvider with ChangeNotifier {
   int get totalWorkoutVolume => todayExercises.fold(0, (sum, item) => sum + item.volume);
   int get remainingCalories => calculatedDailyGoal - totalFoodConsumed + totalExerciseBurned;
 
-  // --- LOCAL ONLY ADDS (Used by ActiveWorkoutScreen to prevent double-saving) ---
+  // --- LOCAL ONLY ADDS ---
   void addMeal(String name, int calories) {
     todayMeals.insert(0, LogEntry(title: "Food", subtitle: name, calories: calories, timestamp: DateTime.now()));
     notifyListeners();
   }
 
-  void addExercise(String name, int calories, int volume) {
-    todayExercises.insert(0, LogEntry(title: "Workout", subtitle: name, calories: calories, volume: volume, timestamp: DateTime.now()));
+  // UPDATED: Now accepts optional distance and steps
+  void addExercise(String name, int calories, int volume, {double distance = 0.0, int steps = 0}) {
+    todayExercises.insert(0, LogEntry(
+        title: "Workout",
+        subtitle: name,
+        calories: calories,
+        volume: volume,
+        distance: distance,
+        steps: steps,
+        timestamp: DateTime.now()
+    ));
     notifyListeners();
   }
 
@@ -65,7 +78,6 @@ class UserProvider with ChangeNotifier {
   // --- FIREBASE SYNC METHODS (TIME-TRAVEL) ---
   // ==========================================
 
-  // 1. Fetch Logs for a SPECIFIC Date
   Future<void> fetchLogsForDate(DateTime date) async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -93,12 +105,24 @@ class UserProvider with ChangeNotifier {
         int calories = (data['calories'] ?? 0).toInt();
         int volume = (data['volume_kg'] ?? 0).toInt();
 
+        // NEW: Pull distance and steps from Firebase
+        double distance = (data['distance_km'] ?? 0).toDouble();
+        int steps = (data['steps'] ?? 0).toInt();
+
         DateTime time = data['timestamp'] != null ? (data['timestamp'] as Timestamp).toDate() : DateTime.now();
 
         if (type == 'food') {
           todayMeals.add(LogEntry(title: "Food", subtitle: title, calories: calories, timestamp: time));
         } else {
-          todayExercises.add(LogEntry(title: "Workout", subtitle: title, calories: calories, volume: volume, timestamp: time));
+          todayExercises.add(LogEntry(
+              title: "Workout",
+              subtitle: title,
+              calories: calories,
+              volume: volume,
+              distance: distance,
+              steps: steps,
+              timestamp: time
+          ));
         }
       }
       notifyListeners();
@@ -107,37 +131,33 @@ class UserProvider with ChangeNotifier {
     }
   }
 
-  // 2. Save Manual Meal (Handles Historical Dates)
   Future<void> saveMealToFirebase(String name, int calories, DateTime logDate) async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       DateTime timestampToSave = (logDate.day == DateTime.now().day && logDate.month == DateTime.now().month && logDate.year == DateTime.now().year)
-          ? DateTime.now()
-          : DateTime(logDate.year, logDate.month, logDate.day, 12, 0);
+          ? DateTime.now() : DateTime(logDate.year, logDate.month, logDate.day, 12, 0);
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('calorie_logs').add({
-        'title': name,
-        'calories': calories,
-        'type': 'food',
-        'timestamp': timestampToSave,
+        'title': name, 'calories': calories, 'type': 'food', 'timestamp': timestampToSave,
       });
       await fetchLogsForDate(logDate);
     }
   }
 
-  // 3. Save Manual Exercise (Handles Historical Dates)
-  Future<void> saveExerciseToFirebase(String name, int calories, int volume, DateTime logDate) async {
+  // UPDATED: Added distance and steps to manual save
+  Future<void> saveExerciseToFirebase(String name, int calories, int volume, DateTime logDate, {double distance = 0.0, int steps = 0}) async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       DateTime timestampToSave = (logDate.day == DateTime.now().day && logDate.month == DateTime.now().month && logDate.year == DateTime.now().year)
-          ? DateTime.now()
-          : DateTime(logDate.year, logDate.month, logDate.day, 12, 0);
+          ? DateTime.now() : DateTime(logDate.year, logDate.month, logDate.day, 12, 0);
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('calorie_logs').add({
         'title': name,
         'calories': calories,
         'volume_kg': volume,
-        'type': 'manual_exercise',
+        'distance_km': distance,
+        'steps': steps,
+        'type': volume > 0 ? 'strength' : 'cardio',
         'timestamp': timestampToSave,
       });
       await fetchLogsForDate(logDate);
@@ -180,24 +200,14 @@ class UserProvider with ChangeNotifier {
       if (doc.exists) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
-        name = data['name'] ?? "User";
-        email = data['email'] ?? "";
-        gender = data['gender'] ?? "male";
-        activityLevel = data['activityLevel'] ?? "Moderate";
-        goal = data['goal'] ?? 1;
-        age = data['age'] ?? 25;
-        height = (data['height'] ?? 0).toDouble();
-        weight = (data['weight'] ?? 0).toDouble();
-        neck = (data['neck'] ?? 0).toDouble();
-        hip = (data['hip'] ?? 0).toDouble();
-        waist = (gender.toLowerCase() == 'male')
-            ? (data['abdomen'] ?? data['waist'] ?? 0).toDouble()
-            : (data['waist'] ?? data['abdomen'] ?? 0).toDouble();
+        name = data['name'] ?? "User"; email = data['email'] ?? ""; gender = data['gender'] ?? "male";
+        activityLevel = data['activityLevel'] ?? "Moderate"; goal = data['goal'] ?? 1; age = data['age'] ?? 25;
+        height = (data['height'] ?? 0).toDouble(); weight = (data['weight'] ?? 0).toDouble();
+        neck = (data['neck'] ?? 0).toDouble(); hip = (data['hip'] ?? 0).toDouble();
+        waist = (gender.toLowerCase() == 'male') ? (data['abdomen'] ?? data['waist'] ?? 0).toDouble() : (data['waist'] ?? data['abdomen'] ?? 0).toDouble();
 
         calculateMetrics();
         notifyListeners();
-
-        // Fetch logs for today immediately upon loading profile
         await fetchLogsForDate(DateTime.now());
       }
     } catch (e) {
@@ -224,11 +234,7 @@ class UserProvider with ChangeNotifier {
   }
 
   String get bmiCategory {
-    if (_bmi <= 0) return "Calculate First";
-    if (_bmi < 18.5) return "Underweight";
-    if (_bmi < 25.0) return "Normal";
-    if (_bmi < 30.0) return "Overweight";
-    return "Obese";
+    if (_bmi <= 0) return "Calculate First"; if (_bmi < 18.5) return "Underweight"; if (_bmi < 25.0) return "Normal"; if (_bmi < 30.0) return "Overweight"; return "Obese";
   }
 
   String get bodyFatCategory {

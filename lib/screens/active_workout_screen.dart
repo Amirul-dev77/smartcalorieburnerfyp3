@@ -266,7 +266,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     int calories = widget.routine['calories'] ?? 0;
     int volume = _workoutStats.value['volume'] ?? 0;
 
-    // 👉 THE MAGIC LINK: Inject data into Global Diary Provider
+    // Inject data into Global Diary Provider
     Provider.of<UserProvider>(context, listen: false).addExercise(title, calories, volume);
 
     _saveToFirebase({
@@ -333,18 +333,26 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     }
 
     String title = widget.routine['title'] ?? "Cardio Workout";
+    double finalDistance = double.tryParse(_distanceCtrl.text) ?? 0.0;
+    int finalSteps = int.tryParse(_stepsCtrl.text) ?? 0;
 
-    // 👉 THE MAGIC LINK: Inject data into Global Diary Provider (Volume is 0 for cardio)
-    Provider.of<UserProvider>(context, listen: false).addExercise(title, _calculatedCalories, 0);
+    // Passes Distance and Steps directly to the Diary instantly!
+    Provider.of<UserProvider>(context, listen: false).addExercise(
+        title,
+        _calculatedCalories,
+        0,
+        distance: finalDistance,
+        steps: finalSteps
+    );
 
     _saveToFirebase({
       'title': title,
       'calories': _calculatedCalories,
       'type': 'cardio',
       'duration_seconds': _elapsedSeconds.value,
-      'distance_km': double.tryParse(_distanceCtrl.text) ?? 0.0,
+      'distance_km': finalDistance,
       'pace': _calculatedPace,
-      'steps': int.tryParse(_stepsCtrl.text) ?? 0,
+      'steps': finalSteps,
       'target_achieved': (_elapsedSeconds.value / 60) >= _targetMins,
     });
   }
