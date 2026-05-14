@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'register_screen.dart';
-import '../main.dart'; // To access MainScaffold
-import '../providers/user_provider.dart'; // To access fetchUserData
+import '../main.dart';
+import '../providers/user_provider.dart';
+import 'admin_dashboard_screen.dart'; // 👉 NEW: Import the admin dashboard
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,7 +26,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // --- LOGIN LOGIC ---
   Future<void> _handleLogin() async {
-    // 1. Show loading spinner
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -33,49 +33,75 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     try {
-      // 2. Attempt Firebase Sign In
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
-      // 3. FETCH USER DATA IMMEDIATELY
       if (mounted) {
         final userProvider = Provider.of<UserProvider>(context, listen: false);
         await userProvider.fetchUserData();
       }
 
-      // 4. Close spinner
       if (mounted) Navigator.of(context).pop();
 
-      // 5. Navigate to Dashboard (MainScaffold)
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const MainScaffold()),
         );
       }
     } on FirebaseAuthException catch (e) {
-      // Handle Errors
-      if (mounted) Navigator.of(context).pop(); // Remove spinner
+      if (mounted) Navigator.of(context).pop();
 
       String errorMessage = "Login failed";
-      if (e.code == 'user-not-found') {
-        errorMessage = "No user found for that email.";
-      } else if (e.code == 'wrong-password') {
-        errorMessage = "Wrong password provided.";
-      } else if (e.code == 'invalid-email') {
-        errorMessage = "The email address is badly formatted.";
-      }
+      if (e.code == 'user-not-found') errorMessage = "No user found for that email.";
+      else if (e.code == 'wrong-password') errorMessage = "Wrong password provided.";
+      else if (e.code == 'invalid-email') errorMessage = "The email address is badly formatted.";
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage), backgroundColor: Colors.red));
     } catch (e) {
       if (mounted) Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
     }
+  }
+
+  // 👉 NEW: SECRET ADMIN DOOR
+  void _showSecretAdminLogin() {
+    TextEditingController passcodeCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.admin_panel_settings, color: Colors.deepPurple),
+            SizedBox(width: 10),
+            Text("Admin Access"),
+          ],
+        ),
+        content: TextField(
+          controller: passcodeCtrl,
+          obscureText: true,
+          decoration: const InputDecoration(labelText: "Enter Secret Passcode", border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
+            onPressed: () {
+              // Secret passcode is 'admin123'
+              if (passcodeCtrl.text == "admin123") {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminDashboardScreen()));
+              } else {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Access Denied."), backgroundColor: Colors.red));
+              }
+            },
+            child: const Text("Enter"),
+          )
+        ],
+      ),
+    );
   }
 
   @override
@@ -89,66 +115,48 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const SizedBox(height: 40),
-              const Icon(Icons.fitness_center, size: 80, color: Colors.deepPurple),
-              const SizedBox(height: 20),
-              const Text(
-                "Smart Calorie Burner",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+
+              // 👉 NEW: Long Press the logo to trigger secret login!
+              GestureDetector(
+                onLongPress: _showSecretAdminLogin,
+                child: const Icon(Icons.fitness_center, size: 80, color: Colors.deepPurple),
               ),
+
+              const SizedBox(height: 20),
+              const Text("Smart Calorie Burner", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               const Text("Login to continue", style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 40),
 
-              // Email Input
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: "Email",
-                  prefixIcon: Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: "Email", prefixIcon: Icon(Icons.email_outlined), border: OutlineInputBorder()),
               ),
               const SizedBox(height: 16),
 
-              // Password Input
               TextField(
                 controller: _passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: "Password",
-                  prefixIcon: Icon(Icons.lock_outline),
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: "Password", prefixIcon: Icon(Icons.lock_outline), border: OutlineInputBorder()),
               ),
               const SizedBox(height: 30),
 
-              // Login Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _handleLogin,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                  ),
+                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
                   child: const Text("Login", style: TextStyle(fontSize: 16)),
                 ),
               ),
               const SizedBox(height: 20),
 
-              // Register Link
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text("Don't have an account?"),
                   TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const RegisterScreen()),
-                      );
-                    },
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen())),
                     child: const Text("Register"),
                   ),
                 ],
