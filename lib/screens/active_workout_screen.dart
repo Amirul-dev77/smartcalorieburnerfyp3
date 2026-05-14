@@ -62,6 +62,7 @@ class ActiveWorkoutScreen extends StatefulWidget {
 
 class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   late bool isCardio;
+  late bool isRunning; // NEW: Detects if the cardio is specifically a "Run"
 
   // --- GLOBAL STATE (Shared) ---
   Timer? _timer;
@@ -77,6 +78,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   final TextEditingController _distanceCtrl = TextEditingController();
   final TextEditingController _stepsCtrl = TextEditingController();
   double _calculatedPace = 0.0;
+  double _calculatedSpeed = 0.0; // NEW: Tracks Speed in km/h
   int _calculatedCalories = 0;
 
   // SMART GOALS
@@ -94,6 +96,8 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   void initState() {
     super.initState();
     isCardio = widget.routine['type'] == 'cardio';
+    // Dynamically checks if the routine title contains "Run" or "Running"
+    isRunning = widget.routine['title'].toString().toLowerCase().contains('run');
 
     if (isCardio) {
       _calculatedCalories = widget.routine['calories'] ?? 0;
@@ -173,7 +177,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("GPS access denied. Distance must be entered manually.")));
     }
 
-    if (actStatus.isGranted) {
+    if (actStatus.isGranted && !isRunning) { // Runners usually rely on GPS, Walkers use pedometer
       _stepStream = Pedometer.stepCountStream.listen((StepCount event) {
         setState(() {
           if (_initialSteps == -1) _initialSteps = event.steps;
@@ -266,7 +270,6 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     int calories = widget.routine['calories'] ?? 0;
     int volume = _workoutStats.value['volume'] ?? 0;
 
-    // Inject data into Global Diary Provider
     Provider.of<UserProvider>(context, listen: false).addExercise(title, calories, volume);
 
     _saveToFirebase({
@@ -285,14 +288,23 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   void _calculateCardioMetrics() {
     double distance = double.tryParse(_distanceCtrl.text) ?? 0.0;
     double minutes = _elapsedSeconds.value / 60.0;
+    double hours = _elapsedSeconds.value / 3600.0; // Needed for km/h
 
     setState(() {
-      if (distance > 0) {
-        _calculatedPace = minutes / distance;
+      // Pace (min/km)
+      _calculatedPace = (distance > 0 && minutes > 0) ? (minutes / distance) : 0.0;
+
+      // Speed (km/h)
+      _calculatedSpeed = (distance > 0 && hours > 0) ? (distance / hours) : 0.0;
+
+      // Calories
+      if (isRunning) {
+        // Runners burn roughly 70 kcal per km. Fallback to time if distance is 0.
+        _calculatedCalories = (distance > 0) ? (distance * 70).round() : (minutes * 10).round();
       } else {
-        _calculatedPace = 0.0;
+        // Walking formula
+        _calculatedCalories = ((minutes * 5) + (distance * 40)).round();
       }
-      _calculatedCalories = ((minutes * 5) + (distance * 40)).round();
     });
   }
 
@@ -336,13 +348,12 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     double finalDistance = double.tryParse(_distanceCtrl.text) ?? 0.0;
     int finalSteps = int.tryParse(_stepsCtrl.text) ?? 0;
 
-    // Passes Distance and Steps directly to the Diary instantly!
     Provider.of<UserProvider>(context, listen: false).addExercise(
         title,
         _calculatedCalories,
         0,
         distance: finalDistance,
-        steps: finalSteps
+        steps: isRunning ? 0 : finalSteps // Runners don't need steps logged
     );
 
     _saveToFirebase({
@@ -352,7 +363,8 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       'duration_seconds': _elapsedSeconds.value,
       'distance_km': finalDistance,
       'pace': _calculatedPace,
-      'steps': finalSteps,
+      'speed_kmh': _calculatedSpeed,
+      'steps': isRunning ? 0 : finalSteps,
       'target_achieved': (_elapsedSeconds.value / 60) >= _targetMins,
     });
   }
@@ -371,8 +383,8 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('calorie_logs').add(data);
 
       if (mounted) {
-        Navigator.pop(context); // Close loading dialog
-        Navigator.pop(context); // Close active workout screen
+        Navigator.pop(context);
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Workout Logged successfully!"), backgroundColor: Colors.green),
         );
@@ -462,7 +474,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                       _startLiveTracking();
                     },
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
-                    child: const Text("START WALK", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                    child: Text(isRunning ? "START RUN" : "START WALK", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
                 )
               else
@@ -488,7 +500,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                           _stopLiveTracking();
                         },
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-                        child: const Text("END WALK", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                        child: Text(isRunning ? "END RUN" : "END WALK", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -501,6 +513,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
               Text(_isCardioFinished ? "Final Details" : "Live Stats", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
 
+              // Manual Input Field (Mainly for treadmill users)
               TextField(
                 controller: _distanceCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -508,30 +521,41 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 onChanged: (val) => _calculateCardioMetrics(),
               ),
               const SizedBox(height: 15),
-              TextField(
-                controller: _stepsCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(labelText: "Steps (Optional)", prefixIcon: const Icon(Icons.directions_walk), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
-              ),
-              const SizedBox(height: 20),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Column(
-                    children: [
-                      const Text("PACE", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                      Text("${_calculatedPace.toStringAsFixed(2)} min/km", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue)),
-                    ],
-                  ),
-                  Column(
-                    children: [
-                      const Text("CALORIES", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                      Text("$_calculatedCalories kcal", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.orange)),
-                    ],
-                  ),
-                ],
-              ),
+              // DYNAMIC UI: Walk vs Run
+              if (!isRunning) ...[
+                // WALK UI: Show steps and basic stats
+                TextField(
+                  controller: _stepsCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(labelText: "Steps (Optional)", prefixIcon: const Icon(Icons.directions_walk), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildLiveStat("PACE", "${_calculatedPace.toStringAsFixed(2)}\nmin/km", Colors.blue),
+                    _buildLiveStat("CALORIES", "$_calculatedCalories\nkcal", Colors.orange),
+                  ],
+                ),
+              ] else ...[
+                // RUN UI: Show 2x2 Grid with Pace, Speed, Calories, Distance
+                const SizedBox(height: 10),
+                GridView.count(
+                  shrinkWrap: true,
+                  crossAxisCount: 2,
+                  childAspectRatio: 2.2,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 15,
+                  crossAxisSpacing: 10,
+                  children: [
+                    _buildLiveStat("DISTANCE", "${_distanceCtrl.text.isEmpty ? '0.00' : _distanceCtrl.text} km", Colors.purple),
+                    _buildLiveStat("CALORIES", "$_calculatedCalories kcal", Colors.orange),
+                    _buildLiveStat("PACE", "${_calculatedPace.toStringAsFixed(2)} min/km", Colors.blue),
+                    _buildLiveStat("SPEED", "${_calculatedSpeed.toStringAsFixed(1)} km/h", Colors.green),
+                  ],
+                ),
+              ]
             ],
 
             if (_isCardioFinished) ...[
@@ -548,6 +572,18 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // Helper widget to build the live stat blocks
+  Widget _buildLiveStat(String label, String value, Color color) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 11)),
+        const SizedBox(height: 5),
+        Text(value, textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+      ],
     );
   }
 
