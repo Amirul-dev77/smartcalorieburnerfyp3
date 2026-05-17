@@ -13,9 +13,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   // Input Controllers
   final TextEditingController _titleCtrl = TextEditingController();
-  final TextEditingController _descCtrl = TextEditingController();
   final TextEditingController _calCtrl = TextEditingController();
   final TextEditingController _durCtrl = TextEditingController();
+
+  // DYNAMIC EXERCISE CONTROLLERS
+  final TextEditingController _descCtrl = TextEditingController(); // Used for Cardio
+  List<TextEditingController> _exerciseCtrls = [TextEditingController()]; // Used for Strength
 
   String _selectedType = 'strength';
 
@@ -28,11 +31,39 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   bool _isLoading = false;
 
+  final List<Map<String, dynamic>> _defaultRoutines = [
+    {'title': 'Push Workout', 'type': 'strength', 'calories': 250, 'duration': '45 mins'},
+    {'title': 'Pull Workout', 'type': 'strength', 'calories': 230, 'duration': '45 mins'},
+    {'title': 'Legs Workout', 'type': 'strength', 'calories': 350, 'duration': '50 mins'},
+    {'title': 'Outdoor Running', 'type': 'cardio', 'calories': 400, 'duration': '30 mins'},
+    {'title': 'Brisk Walking', 'type': 'cardio', 'calories': 150, 'duration': '30 mins'},
+  ];
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose(); _descCtrl.dispose(); _calCtrl.dispose(); _durCtrl.dispose();
+    for (var ctrl in _exerciseCtrls) { ctrl.dispose(); }
+    super.dispose();
+  }
+
   void _addRoutine() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedLifestyles.isEmpty || _selectedBmis.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Select at least one Lifestyle and BMI tag!"), backgroundColor: Colors.orange));
       return;
+    }
+
+    // 👉 DYNAMIC ENGINE: Check what type of routine we are saving
+    List<String> exercisesList = [];
+    String finalDesc = _descCtrl.text.trim();
+
+    if (_selectedType == 'strength') {
+      exercisesList = _exerciseCtrls.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
+      if (exercisesList.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Add at least one exercise!"), backgroundColor: Colors.orange));
+        return;
+      }
+      finalDesc = exercisesList.join(', '); // Creates a clean string for the display list
     }
 
     setState(() => _isLoading = true);
@@ -41,7 +72,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       await FirebaseFirestore.instance.collection('routines').add({
         'title': _titleCtrl.text.trim(),
         'type': _selectedType,
-        'desc': _descCtrl.text.trim(),
+        'desc': finalDesc,
+        'exercises': exercisesList, // 👉 NEW: Saves the clean array to Firebase
         'calories': int.parse(_calCtrl.text.trim()),
         'duration': '${_durCtrl.text.trim()} mins',
         'lifestyle': _selectedLifestyles,
@@ -49,8 +81,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         'created_at': FieldValue.serverTimestamp(),
       });
 
+      // Clear the form
       _titleCtrl.clear(); _descCtrl.clear(); _durCtrl.clear(); _calCtrl.clear();
-      setState(() { _selectedLifestyles.clear(); _selectedBmis.clear(); });
+      setState(() {
+        _selectedLifestyles.clear(); _selectedBmis.clear();
+        _exerciseCtrls = [TextEditingController()];
+      });
 
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Routine added to global pool!"), backgroundColor: Colors.green));
     } catch (e) {
@@ -62,6 +98,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _deleteRoutine(String docId) async {
     await FirebaseFirestore.instance.collection('routines').doc(docId).delete();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Custom routine deleted."), backgroundColor: Colors.orange));
+    }
   }
 
   @override
@@ -80,7 +119,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             indicatorColor: Colors.orange,
             tabs: [
               Tab(icon: Icon(Icons.add_box), text: "Add Routine"),
-              Tab(icon: Icon(Icons.list), text: "Manage Added"),
+              Tab(icon: Icon(Icons.list), text: "Manage Routines"),
             ],
           ),
         ),
@@ -106,7 +145,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       onChanged: (val) => setState(() => _selectedType = val!),
                     ),
                     const SizedBox(height: 15),
-                    _buildTextField(_descCtrl, "Description / Exercises", TextInputType.multiline, maxLines: 3),
+
+                    // 👉 DYNAMIC UI: Switches between Strength List and Cardio Description
+                    if (_selectedType == 'strength') ...[
+                      const Text("Exercises in this routine:", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 10),
+                      ...List.generate(_exerciseCtrls.length, (index) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            children: [
+                              Expanded(child: _buildTextField(_exerciseCtrls[index], "Exercise ${index + 1} (e.g., Bench Press)", TextInputType.text)),
+                              if (_exerciseCtrls.length > 1)
+                                IconButton(
+                                    icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                    onPressed: () => setState(() => _exerciseCtrls.removeAt(index))
+                                ),
+                            ],
+                          ),
+                        );
+                      }),
+                      TextButton.icon(
+                          onPressed: () => setState(() => _exerciseCtrls.add(TextEditingController())),
+                          icon: const Icon(Icons.add_circle, color: Colors.deepPurple),
+                          label: const Text("Add Another Exercise", style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold))
+                      ),
+                    ] else ...[
+                      _buildTextField(_descCtrl, "Description (e.g., 5km run at moderate pace)", TextInputType.multiline, maxLines: 3),
+                    ],
+
                     const SizedBox(height: 15),
                     Row(
                       children: [
@@ -162,25 +229,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('routines').orderBy('created_at', descending: true).snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  if (snapshot.data!.docs.isEmpty) return const Center(child: Text("No custom routines added yet."));
+                  List<Map<String, dynamic>> allRoutines = _defaultRoutines.map((e) {
+                    return {...e, 'isDefault': true};
+                  }).toList();
+
+                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                    var firebaseRoutines = snapshot.data!.docs.map((doc) {
+                      var data = doc.data() as Map<String, dynamic>;
+                      data['id'] = doc.id;
+                      data['isDefault'] = false;
+                      return data;
+                    }).toList();
+                    allRoutines.addAll(firebaseRoutines);
+                  }
 
                   return ListView.builder(
                     padding: const EdgeInsets.all(20),
-                    itemCount: snapshot.data!.docs.length,
+                    itemCount: allRoutines.length,
                     itemBuilder: (context, index) {
-                      var doc = snapshot.data!.docs[index];
-                      var data = doc.data() as Map<String, dynamic>;
+                      var data = allRoutines[index];
+                      bool isDefault = data['isDefault'];
 
                       return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            side: BorderSide(color: isDefault ? Colors.transparent : Colors.deepPurple.withOpacity(0.3))
+                        ),
                         child: ListTile(
-                          leading: CircleAvatar(backgroundColor: Colors.deepPurple.withOpacity(0.1), child: Icon(data['type'] == 'cardio' ? Icons.directions_run : Icons.fitness_center, color: Colors.deepPurple)),
+                          leading: CircleAvatar(
+                              backgroundColor: Colors.deepPurple.withOpacity(0.1),
+                              child: Icon(data['type'] == 'cardio' ? Icons.directions_run : Icons.fitness_center, color: Colors.deepPurple)
+                          ),
                           title: Text(data['title'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text("${data['calories']} kcal • ${data['duration']}"),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _deleteRoutine(doc.id),
-                          ),
+                          trailing: isDefault
+                              ? Tooltip(message: "System Default", child: Icon(Icons.lock_outline, color: Colors.grey.shade400))
+                              : IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _deleteRoutine(data['id'])),
                         ),
                       );
                     },
@@ -195,9 +280,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _buildTextField(TextEditingController ctrl, String label, TextInputType type, {int maxLines = 1}) {
     return TextFormField(
-      controller: ctrl,
-      keyboardType: type,
-      maxLines: maxLines,
+      controller: ctrl, keyboardType: type, maxLines: maxLines,
       decoration: InputDecoration(labelText: label, border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)), filled: true, fillColor: Colors.white),
       validator: (value) => value!.isEmpty ? "Required" : null,
     );

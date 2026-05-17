@@ -62,7 +62,7 @@ class ActiveWorkoutScreen extends StatefulWidget {
 
 class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   late bool isCardio;
-  late bool isRunning; // NEW: Detects if the cardio is specifically a "Run"
+  late bool isRunning;
 
   // --- GLOBAL STATE (Shared) ---
   Timer? _timer;
@@ -78,7 +78,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   final TextEditingController _distanceCtrl = TextEditingController();
   final TextEditingController _stepsCtrl = TextEditingController();
   double _calculatedPace = 0.0;
-  double _calculatedSpeed = 0.0; // NEW: Tracks Speed in km/h
+  double _calculatedSpeed = 0.0;
   int _calculatedCalories = 0;
 
   // SMART GOALS
@@ -95,16 +95,30 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   @override
   void initState() {
     super.initState();
+
     isCardio = widget.routine['type'] == 'cardio';
-    // Dynamically checks if the routine title contains "Run" or "Running"
     isRunning = widget.routine['title'].toString().toLowerCase().contains('run');
 
     if (isCardio) {
       _calculatedCalories = widget.routine['calories'] ?? 0;
     } else {
-      String description = widget.routine['desc'] as String;
-      List<String> exerciseNames = description.split(',').map((e) => e.trim()).toList();
+      // 👉 NEW SMARTER PARSER: Checks for the array first!
+      List<String> exerciseNames = [];
 
+      if (widget.routine.containsKey('exercises') && widget.routine['exercises'] is List && (widget.routine['exercises'] as List).isNotEmpty) {
+        // If it was created in the new Admin Dashboard, use the array directly!
+        exerciseNames = List<String>.from(widget.routine['exercises']);
+      } else {
+        // Backward compatibility: If it's a hardcoded default routine, split it safely by commas or newlines
+        String description = widget.routine['desc'] ?? 'Strength Exercise';
+        exerciseNames = description
+            .split(RegExp(r'[,\n]'))
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+      }
+
+      // Generate a card for every single exercise extracted
       for (String name in exerciseNames) {
         ExerciseData ex = ExerciseData(name: name, targetRestSeconds: 120);
         ex.sets = [
@@ -114,6 +128,14 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
         ];
         _exercises.add(ex);
       }
+
+      // Fallback safeguard
+      if (_exercises.isEmpty) {
+        ExerciseData ex = ExerciseData(name: "Custom Workout", targetRestSeconds: 120);
+        ex.sets = [WorkoutSetData(weight: '20', reps: '10')];
+        _exercises.add(ex);
+      }
+
       _startTimer();
       _calculateGlobalStats();
     }
@@ -177,7 +199,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("GPS access denied. Distance must be entered manually.")));
     }
 
-    if (actStatus.isGranted && !isRunning) { // Runners usually rely on GPS, Walkers use pedometer
+    if (actStatus.isGranted && !isRunning) {
       _stepStream = Pedometer.stepCountStream.listen((StepCount event) {
         setState(() {
           if (_initialSteps == -1) _initialSteps = event.steps;
@@ -288,54 +310,29 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   void _calculateCardioMetrics() {
     double distance = double.tryParse(_distanceCtrl.text) ?? 0.0;
     double minutes = _elapsedSeconds.value / 60.0;
-    double hours = _elapsedSeconds.value / 3600.0; // Needed for km/h
+    double hours = _elapsedSeconds.value / 3600.0;
 
     setState(() {
-      // Pace (min/km)
       _calculatedPace = (distance > 0 && minutes > 0) ? (minutes / distance) : 0.0;
-
-      // Speed (km/h)
       _calculatedSpeed = (distance > 0 && hours > 0) ? (distance / hours) : 0.0;
 
-      // Calories
       if (isRunning) {
-        // Runners burn roughly 70 kcal per km. Fallback to time if distance is 0.
         _calculatedCalories = (distance > 0) ? (distance * 70).round() : (minutes * 10).round();
       } else {
-        // Walking formula
         _calculatedCalories = ((minutes * 5) + (distance * 40)).round();
       }
     });
   }
 
   void _calculateSmartGoal(double bmi, String lifestyle) {
-    int mins = 30;
-    double km = 3.0;
-
-    if (bmi >= 30) {
-      mins -= 10;
-      km -= 1.0;
-    } else if (bmi >= 25 || bmi < 18.5) {
-      mins -= 5;
-      km -= 0.5;
-    }
-
-    if (lifestyle == 'Sedentary') {
-      mins -= 5;
-      km -= 0.5;
-    } else if (lifestyle == 'Very Active') {
-      mins += 15;
-      km += 2.0;
-    } else if (lifestyle == 'Active') {
-      mins += 5;
-      km += 0.5;
-    }
-
-    if (mins < 10) mins = 10;
-    if (km < 1.0) km = 1.0;
-
-    _targetMins = mins;
-    _targetKm = km;
+    int mins = 30; double km = 3.0;
+    if (bmi >= 30) { mins -= 10; km -= 1.0; }
+    else if (bmi >= 25 || bmi < 18.5) { mins -= 5; km -= 0.5; }
+    if (lifestyle == 'Sedentary') { mins -= 5; km -= 0.5; }
+    else if (lifestyle == 'Very Active') { mins += 15; km += 2.0; }
+    else if (lifestyle == 'Active') { mins += 5; km += 0.5; }
+    if (mins < 10) mins = 10; if (km < 1.0) km = 1.0;
+    _targetMins = mins; _targetKm = km;
   }
 
   void _finishCardioWorkout() {
@@ -349,11 +346,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     int finalSteps = int.tryParse(_stepsCtrl.text) ?? 0;
 
     Provider.of<UserProvider>(context, listen: false).addExercise(
-        title,
-        _calculatedCalories,
-        0,
-        distance: finalDistance,
-        steps: isRunning ? 0 : finalSteps // Runners don't need steps logged
+        title, _calculatedCalories, 0, distance: finalDistance, steps: isRunning ? 0 : finalSteps
     );
 
     _saveToFirebase({
@@ -385,9 +378,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       if (mounted) {
         Navigator.pop(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Workout Logged successfully!"), backgroundColor: Colors.green),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Workout Logged successfully!"), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
@@ -415,21 +406,15 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   Widget _buildCardioUI() {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(title: Text(widget.routine['title']), centerTitle: true, elevation: 0, backgroundColor: Colors.white, foregroundColor: Colors.black),
+      appBar: AppBar(title: Text(widget.routine['title'] ?? 'Cardio'), centerTitle: true, elevation: 0, backgroundColor: Colors.white, foregroundColor: Colors.black),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(30),
         child: Column(
           children: [
-            // --- SMART GOAL BANNER ---
             if (!_isCardioFinished)
               Container(
-                margin: const EdgeInsets.only(bottom: 30),
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                ),
+                margin: const EdgeInsets.only(bottom: 30), padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.blue.withOpacity(0.3))),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -451,7 +436,6 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 ),
               ),
 
-            // --- STOPWATCH ---
             Container(
               padding: const EdgeInsets.all(40),
               decoration: BoxDecoration(shape: BoxShape.circle, color: _isCardioRunning ? Colors.deepPurple.withOpacity(0.1) : Colors.white, border: Border.all(color: Colors.deepPurple, width: 4)),
@@ -462,17 +446,12 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
             ),
             const SizedBox(height: 40),
 
-            // --- START/PAUSE/END CONTROLS ---
             if (!_isCardioFinished) ...[
               if (!_isCardioRunning)
                 SizedBox(
                   width: double.infinity, height: 60,
                   child: ElevatedButton(
-                    onPressed: () {
-                      setState(() { _isCardioRunning = true; });
-                      _startTimer();
-                      _startLiveTracking();
-                    },
+                    onPressed: () { setState(() { _isCardioRunning = true; }); _startTimer(); _startLiveTracking(); },
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
                     child: Text(isRunning ? "START RUN" : "START WALK", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
@@ -482,11 +461,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () {
-                          setState(() { _isCardioRunning = false; });
-                          _timer?.cancel();
-                          _stopLiveTracking();
-                        },
+                        onPressed: () { setState(() { _isCardioRunning = false; }); _timer?.cancel(); _stopLiveTracking(); },
                         style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15), side: const BorderSide(color: Colors.orange, width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                         child: const Text("PAUSE", style: TextStyle(color: Colors.orange, fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
@@ -494,11 +469,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                     const SizedBox(width: 15),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () {
-                          setState(() { _isCardioRunning = false; _isCardioFinished = true; });
-                          _timer?.cancel();
-                          _stopLiveTracking();
-                        },
+                        onPressed: () { setState(() { _isCardioRunning = false; _isCardioFinished = true; }); _timer?.cancel(); _stopLiveTracking(); },
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                         child: Text(isRunning ? "END RUN" : "END WALK", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
@@ -507,29 +478,20 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 ),
             ],
 
-            // --- LIVE DATA DISPLAY ---
             if (_isCardioRunning || _isCardioFinished) ...[
               const SizedBox(height: 30),
               Text(_isCardioFinished ? "Final Details" : "Live Stats", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
 
-              // Manual Input Field (Mainly for treadmill users)
               TextField(
-                controller: _distanceCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                controller: _distanceCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(labelText: "Distance (km)", prefixIcon: const Icon(Icons.map), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
                 onChanged: (val) => _calculateCardioMetrics(),
               ),
               const SizedBox(height: 15),
 
-              // DYNAMIC UI: Walk vs Run
               if (!isRunning) ...[
-                // WALK UI: Show steps and basic stats
-                TextField(
-                  controller: _stepsCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(labelText: "Steps (Optional)", prefixIcon: const Icon(Icons.directions_walk), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
-                ),
+                TextField(controller: _stepsCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: "Steps (Optional)", prefixIcon: const Icon(Icons.directions_walk), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
                 const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -539,15 +501,9 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                   ],
                 ),
               ] else ...[
-                // RUN UI: Show 2x2 Grid with Pace, Speed, Calories, Distance
                 const SizedBox(height: 10),
                 GridView.count(
-                  shrinkWrap: true,
-                  crossAxisCount: 2,
-                  childAspectRatio: 2.2,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 15,
-                  crossAxisSpacing: 10,
+                  shrinkWrap: true, crossAxisCount: 2, childAspectRatio: 2.2, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 15, crossAxisSpacing: 10,
                   children: [
                     _buildLiveStat("DISTANCE", "${_distanceCtrl.text.isEmpty ? '0.00' : _distanceCtrl.text} km", Colors.purple),
                     _buildLiveStat("CALORIES", "$_calculatedCalories kcal", Colors.orange),
@@ -575,7 +531,6 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     );
   }
 
-  // Helper widget to build the live stat blocks
   Widget _buildLiveStat(String label, String value, Color color) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -594,7 +549,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: Text(widget.routine['title'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: Text(widget.routine['title'] ?? 'Strength', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white, foregroundColor: Colors.black, elevation: 0,
         actions: [TextButton(onPressed: _finishStrengthWorkout, child: const Text("Finish", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 16)))],
       ),
@@ -628,9 +583,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Expanded(
-                              child: Text(ex.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                            ),
+                            Expanded(child: Text(ex.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.deepPurple))),
                             IconButton(icon: const Icon(Icons.timer_outlined, color: Colors.grey), onPressed: () => _editRestTime(ex))
                           ],
                         ),
