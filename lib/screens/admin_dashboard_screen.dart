@@ -73,7 +73,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         'title': _titleCtrl.text.trim(),
         'type': _selectedType,
         'desc': finalDesc,
-        'exercises': exercisesList, // 👉 NEW: Saves the clean array to Firebase
+        'exercises': exercisesList,
         'calories': int.parse(_calCtrl.text.trim()),
         'duration': '${_durCtrl.text.trim()} mins',
         'lifestyle': _selectedLifestyles,
@@ -118,14 +118,64 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             unselectedLabelColor: Colors.white60,
             indicatorColor: Colors.orange,
             tabs: [
-              Tab(icon: Icon(Icons.add_box), text: "Add Routine"),
+              // 👉 SWAPPED TABS HERE
               Tab(icon: Icon(Icons.list), text: "Manage Routines"),
+              Tab(icon: Icon(Icons.add_box), text: "Add Routine"),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            // TAB 1: ADD ROUTINE FORM
+            // 👉 SWAPPED SCREENS HERE
+            // TAB 1 (NOW MANAGE ROUTINES): List of current routines
+            StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('routines').orderBy('created_at', descending: true).snapshots(),
+                builder: (context, snapshot) {
+                  List<Map<String, dynamic>> allRoutines = _defaultRoutines.map((e) {
+                    return {...e, 'isDefault': true};
+                  }).toList();
+
+                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                    var firebaseRoutines = snapshot.data!.docs.map((doc) {
+                      var data = doc.data() as Map<String, dynamic>;
+                      data['id'] = doc.id;
+                      data['isDefault'] = false;
+                      return data;
+                    }).toList();
+                    allRoutines.addAll(firebaseRoutines);
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: allRoutines.length,
+                    itemBuilder: (context, index) {
+                      var data = allRoutines[index];
+                      bool isDefault = data['isDefault'];
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            side: BorderSide(color: isDefault ? Colors.transparent : Colors.deepPurple.withOpacity(0.3))
+                        ),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                              backgroundColor: Colors.deepPurple.withOpacity(0.1),
+                              child: Icon(data['type'] == 'cardio' ? Icons.directions_run : Icons.fitness_center, color: Colors.deepPurple)
+                          ),
+                          title: Text(data['title'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text("${data['calories']} kcal • ${data['duration']}"),
+                          trailing: isDefault
+                              ? Tooltip(message: "System Default", child: Icon(Icons.lock_outline, color: Colors.grey.shade400))
+                              : IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _deleteRoutine(data['id'])),
+                        ),
+                      );
+                    },
+                  );
+                }
+            ),
+
+            // TAB 2 (NOW ADD ROUTINE): The dynamic creation form
             _isLoading ? const Center(child: CircularProgressIndicator()) : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Form(
@@ -146,7 +196,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                     const SizedBox(height: 15),
 
-                    // 👉 DYNAMIC UI: Switches between Strength List and Cardio Description
                     if (_selectedType == 'strength') ...[
                       const Text("Exercises in this routine:", style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 10),
@@ -224,54 +273,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ),
             ),
-
-            // TAB 2: MANAGE ROUTINES
-            StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('routines').orderBy('created_at', descending: true).snapshots(),
-                builder: (context, snapshot) {
-                  List<Map<String, dynamic>> allRoutines = _defaultRoutines.map((e) {
-                    return {...e, 'isDefault': true};
-                  }).toList();
-
-                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                    var firebaseRoutines = snapshot.data!.docs.map((doc) {
-                      var data = doc.data() as Map<String, dynamic>;
-                      data['id'] = doc.id;
-                      data['isDefault'] = false;
-                      return data;
-                    }).toList();
-                    allRoutines.addAll(firebaseRoutines);
-                  }
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(20),
-                    itemCount: allRoutines.length,
-                    itemBuilder: (context, index) {
-                      var data = allRoutines[index];
-                      bool isDefault = data['isDefault'];
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                            side: BorderSide(color: isDefault ? Colors.transparent : Colors.deepPurple.withOpacity(0.3))
-                        ),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                              backgroundColor: Colors.deepPurple.withOpacity(0.1),
-                              child: Icon(data['type'] == 'cardio' ? Icons.directions_run : Icons.fitness_center, color: Colors.deepPurple)
-                          ),
-                          title: Text(data['title'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text("${data['calories']} kcal • ${data['duration']}"),
-                          trailing: isDefault
-                              ? Tooltip(message: "System Default", child: Icon(Icons.lock_outline, color: Colors.grey.shade400))
-                              : IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _deleteRoutine(data['id'])),
-                        ),
-                      );
-                    },
-                  );
-                }
-            )
           ],
         ),
       ),
