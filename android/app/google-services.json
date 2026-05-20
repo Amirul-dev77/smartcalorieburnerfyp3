@@ -12,7 +12,20 @@
           "package_name": "com.example.smartcalorieburnerfyp3"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "264954755740-49g44lch7qukprpj5t173ldumfr3o846.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.smartcalorieburnerfyp3",
+            "certificate_hash": "b5f2d108fefa91e6f6775c142478d1c04ab262f6"
+          }
+        },
+        {
+          "client_id": "264954755740-j6gpbudullasi3t0jjbnh8q193v59brj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCSnMawSLLSZCH2RT1Sy__ERTOa0WzKd8U"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "264954755740-j6gpbudullasi3t0jjbnh8q193v59brj.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "264954755740-l77ti8nj8sl0k0pfe0e0glp9a1l7ek8p.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.smartcalorieburnerfyp3"
+              }
+            }
+          ]
         }
       }
     }
