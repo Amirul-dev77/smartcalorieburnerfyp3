@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:provider/provider.dart';
 import 'profile_setup_screen.dart'; // Navigate here on success
+import '../providers/user_provider.dart';
+import '../main.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -22,6 +27,70 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  // --- GOOGLE SIGN-IN LOGIC ---
+  Future<void> _handleGoogleSignIn() async {
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final googleUser = await GoogleSignIn.instance.authenticate();
+      if (googleUser == null) {
+        if (mounted) Navigator.of(context).pop(); // Close spinner
+        return;
+      }
+
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+      final OAuthCredential credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+      final User? user = userCredential.user;
+
+      if (user == null) {
+        throw Exception("Failed to sign in. Firebase user is null.");
+      }
+
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (mounted) Navigator.of(context).pop(); // Close spinner
+
+      if (doc.exists) {
+        await userProvider.fetchUserData();
+        navigator.pushReplacement(
+          MaterialPageRoute(builder: (context) => const MainScaffold()),
+        );
+      } else {
+        navigator.pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => ProfileSetupScreen(
+              initialName: user.displayName,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop(); // Close spinner
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text("Google Sign-In failed: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _handleRegister() async {
@@ -96,6 +165,58 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   foregroundColor: Colors.white,
                 ),
                 child: const Text("Register"),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // OR divider
+            const Row(
+              children: [
+                Expanded(child: Divider()),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Text("OR", style: TextStyle(color: Colors.grey)),
+                ),
+                Expanded(child: Divider()),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // Google Button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: _handleGoogleSignIn,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(color: Colors.grey.shade300),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.network(
+                      'https://developers.google.com/identity/images/g-logo.png',
+                      height: 24,
+                      width: 24,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(Icons.g_mobiledata, size: 24);
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      "Continue with Google",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

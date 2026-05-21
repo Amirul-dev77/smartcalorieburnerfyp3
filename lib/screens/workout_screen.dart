@@ -13,34 +13,89 @@ class WorkoutScreen extends StatefulWidget {
 }
 
 class _WorkoutScreenState extends State<WorkoutScreen> {
-  // --- 1. YOUR HARDCODED ROUTINES (These will ALWAYS exist) ---
-  final List<Map<String, dynamic>> _defaultRoutines = [
-    {
-      'title': 'Push Workout', 'type': 'strength', 'calories': 250, 'duration': '45 mins', 'icon': FontAwesomeIcons.handFist,
-      'desc': 'Bench Press, Shoulder Press, Lateral Raises, Tricep Dips',
-      'lifestyle': ['Moderate', 'Active', 'Very Active'], 'bmi': ['Underweight', 'Normal', 'Overweight', 'Obese'],
-    },
-    {
-      'title': 'Pull Workout', 'type': 'strength', 'calories': 230, 'duration': '45 mins', 'icon': FontAwesomeIcons.dumbbell,
-      'desc': 'Plate-Loaded Rows, Lat Pulldowns, Face Pulls, Bayesian Curls',
-      'lifestyle': ['Moderate', 'Active', 'Very Active'], 'bmi': ['Underweight', 'Normal', 'Overweight', 'Obese'],
-    },
-    {
-      'title': 'Legs Workout', 'type': 'strength', 'calories': 350, 'duration': '50 mins', 'icon': FontAwesomeIcons.personRunning,
-      'desc': 'Squats, Leg Press, RDLs, Calf Raises',
-      'lifestyle': ['Moderate', 'Active', 'Very Active'], 'bmi': ['Underweight', 'Normal', 'Overweight', 'Obese'],
-    },
-    {
-      'title': 'Outdoor Running', 'type': 'cardio', 'calories': 400, 'duration': '30 mins', 'icon': FontAwesomeIcons.road,
-      'desc': '5km run at a moderate pace (approx 6:00/km)',
-      'lifestyle': ['Active', 'Very Active'], 'bmi': ['Normal', 'Underweight'],
-    },
-    {
-      'title': 'Brisk Walking', 'type': 'cardio', 'calories': 150, 'duration': '30 mins', 'icon': FontAwesomeIcons.personWalking,
-      'desc': 'Power walking in the park or treadmill incline',
-      'lifestyle': ['Sedentary', 'Light', 'Moderate'], 'bmi': ['Overweight', 'Obese', 'Normal', 'Underweight'],
-    },
-  ];
+  bool _isSeeding = false;
+
+  Future<void> _seedDefaultRoutines() async {
+    if (_isSeeding) return;
+    setState(() => _isSeeding = true);
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      final collection = FirebaseFirestore.instance.collection('routines');
+
+      final List<Map<String, dynamic>> routinesToSeed = [
+        {
+          'title': 'Push Workout',
+          'type': 'strength',
+          'desc': 'Bench Press, Shoulder Press, Lateral Raises, Tricep Dips',
+          'exercises': ['Bench Press', 'Shoulder Press', 'Lateral Raises', 'Tricep Dips'],
+          'calories': 250,
+          'duration': '45 mins',
+          'lifestyle': ['Moderate', 'Active', 'Very Active'],
+          'bmi': ['Underweight', 'Normal', 'Overweight', 'Obese'],
+          'created_at': FieldValue.serverTimestamp(),
+        },
+        {
+          'title': 'Pull Workout',
+          'type': 'strength',
+          'desc': 'Plate-Loaded Rows, Lat Pulldowns, Face Pulls, Bayesian Curls',
+          'exercises': ['Plate-Loaded Rows', 'Lat Pulldowns', 'Face Pulls', 'Bayesian Curls'],
+          'calories': 230,
+          'duration': '45 mins',
+          'lifestyle': ['Moderate', 'Active', 'Very Active'],
+          'bmi': ['Underweight', 'Normal', 'Overweight', 'Obese'],
+          'created_at': FieldValue.serverTimestamp(),
+        },
+        {
+          'title': 'Legs Workout',
+          'type': 'strength',
+          'desc': 'Squats, Leg Press, RDLs, Calf Raises',
+          'exercises': ['Squats', 'Leg Press', 'RDLs', 'Calf Raises'],
+          'calories': 350,
+          'duration': '50 mins',
+          'lifestyle': ['Moderate', 'Active', 'Very Active'],
+          'bmi': ['Underweight', 'Normal', 'Overweight', 'Obese'],
+          'created_at': FieldValue.serverTimestamp(),
+        },
+        {
+          'title': 'Outdoor Running',
+          'type': 'cardio',
+          'desc': '5km run at a moderate pace (approx 6:00/km)',
+          'calories': 400,
+          'duration': '30 mins',
+          'lifestyle': ['Active', 'Very Active'],
+          'bmi': ['Normal', 'Underweight'],
+          'show_speed': true,
+          'start_button_text': 'START RUN',
+          'created_at': FieldValue.serverTimestamp(),
+        },
+        {
+          'title': 'Brisk Walking',
+          'type': 'cardio',
+          'desc': 'Power walking in the park or treadmill incline',
+          'calories': 150,
+          'duration': '30 mins',
+          'lifestyle': ['Sedentary', 'Light', 'Moderate'],
+          'bmi': ['Overweight', 'Obese', 'Normal', 'Underweight'],
+          'show_speed': true,
+          'start_button_text': 'START WALK',
+          'created_at': FieldValue.serverTimestamp(),
+        },
+      ];
+
+      for (var routine in routinesToSeed) {
+        final docRef = collection.doc();
+        batch.set(docRef, routine);
+      }
+
+      await batch.commit();
+    } catch (e) {
+      debugPrint("Error seeding defaults: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isSeeding = false);
+      }
+    }
+  }
 
   // Helper to give Firebase routines a cool icon
   IconData _getIconForType(String title, String type) {
@@ -100,20 +155,39 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('routines').snapshots(),
               builder: (context, snapshot) {
-                // 1. Start with the guaranteed default list
-                List<Map<String, dynamic>> combinedRoutines = List.from(_defaultRoutines);
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-                // 2. If admin added new ones to Firebase, grab them and merge!
-                if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                  List<Map<String, dynamic>> firebaseRoutines = snapshot.data!.docs.map((doc) {
+                if (snapshot.hasData && snapshot.data!.docs.isEmpty && !_isSeeding) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _seedDefaultRoutines();
+                  });
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 15),
+                        Text("Setting up default routines...", style: TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                  );
+                }
+
+                // Get routines from Firebase
+                List<Map<String, dynamic>> combinedRoutines = [];
+
+                if (snapshot.hasData) {
+                  combinedRoutines = snapshot.data!.docs.map((doc) {
                     var data = doc.data() as Map<String, dynamic>;
+                    data['id'] = doc.id;
                     data['icon'] = _getIconForType(data['title'] ?? '', data['type'] ?? '');
                     return data;
                   }).toList();
-                  combinedRoutines.addAll(firebaseRoutines);
                 }
 
-                // 3. Run YOUR exact Smart Sorting Algorithm on the combined list
+                // 3. Run Smart Sorting Algorithm on the list
                 combinedRoutines.sort((a, b) {
                   int scoreA = 0; int scoreB = 0;
                   if ((a['lifestyle'] as List? ?? []).contains(userLifestyle)) scoreA++;
@@ -123,7 +197,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   return scoreB.compareTo(scoreA);
                 });
 
-                // 4. Render YOUR exact UI layout
+                // 4. Render UI layout
                 return ListView.builder(
                   padding: const EdgeInsets.all(20),
                   itemCount: combinedRoutines.length,

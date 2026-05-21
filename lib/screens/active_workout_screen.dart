@@ -64,6 +64,28 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   late bool isCardio;
   late bool isRunning;
 
+  String _getStartButtonText() {
+    if (widget.routine['start_button_text'] != null &&
+        widget.routine['start_button_text'].toString().trim().isNotEmpty) {
+      return widget.routine['start_button_text'].toString().trim().toUpperCase();
+    }
+    return isRunning ? "START RUN" : "START WALK";
+  }
+
+  String _getEndButtonText(String startText) {
+    if (startText.startsWith("START")) {
+      return startText.replaceFirst("START", "END");
+    }
+    if (startText.contains("START")) {
+      return startText.replaceAll("START", "END");
+    }
+    int firstSpace = startText.indexOf(" ");
+    if (firstSpace != -1) {
+      return "END" + startText.substring(firstSpace);
+    }
+    return "END $startText";
+  }
+
   // --- GLOBAL STATE (Shared) ---
   Timer? _timer;
   final ValueNotifier<int> _elapsedSeconds = ValueNotifier<int>(0);
@@ -453,7 +475,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                   child: ElevatedButton(
                     onPressed: () { setState(() { _isCardioRunning = true; }); _startTimer(); _startLiveTracking(); },
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
-                    child: Text(isRunning ? "START RUN" : "START WALK", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                    child: Text(_getStartButtonText(), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
                 )
               else
@@ -471,7 +493,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                       child: ElevatedButton(
                         onPressed: () { setState(() { _isCardioRunning = false; _isCardioFinished = true; }); _timer?.cancel(); _stopLiveTracking(); },
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-                        child: Text(isRunning ? "END RUN" : "END WALK", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                        child: Text(_getEndButtonText(_getStartButtonText()), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -502,15 +524,19 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 ),
               ] else ...[
                 const SizedBox(height: 10),
-                GridView.count(
-                  shrinkWrap: true, crossAxisCount: 2, childAspectRatio: 2.2, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 15, crossAxisSpacing: 10,
-                  children: [
+                Builder(builder: (context) {
+                  final bool showSpeed = widget.routine['show_speed'] ?? true;
+                  final List<Widget> statCards = [
                     _buildLiveStat("DISTANCE", "${_distanceCtrl.text.isEmpty ? '0.00' : _distanceCtrl.text} km", Colors.purple),
                     _buildLiveStat("CALORIES", "$_calculatedCalories kcal", Colors.orange),
                     _buildLiveStat("PACE", "${_calculatedPace.toStringAsFixed(2)} min/km", Colors.blue),
-                    _buildLiveStat("SPEED", "${_calculatedSpeed.toStringAsFixed(1)} km/h", Colors.green),
-                  ],
-                ),
+                    if (showSpeed) _buildLiveStat("SPEED", "${_calculatedSpeed.toStringAsFixed(1)} km/h", Colors.green),
+                  ];
+                  return GridView.count(
+                    shrinkWrap: true, crossAxisCount: 2, childAspectRatio: 2.2, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 15, crossAxisSpacing: 10,
+                    children: statCards,
+                  );
+                }),
               ]
             ],
 

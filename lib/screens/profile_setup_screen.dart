@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'lifestyle_assessment_screen.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
-  const ProfileSetupScreen({super.key});
+  final String? initialName;
+  const ProfileSetupScreen({super.key, this.initialName});
 
   @override
   State<ProfileSetupScreen> createState() => _ProfileSetupScreenState();
@@ -10,6 +11,15 @@ class ProfileSetupScreen extends StatefulWidget {
 
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _nameController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialName != null) {
+      _nameController.text = widget.initialName!;
+    }
+  }
+
   final _ageController = TextEditingController();
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
