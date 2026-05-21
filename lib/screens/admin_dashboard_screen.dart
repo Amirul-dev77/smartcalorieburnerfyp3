@@ -284,12 +284,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text("Edit Workout Routine", style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Expanded(
+                    child: Text("Edit Workout Routine", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(ctx),
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(4),
                   )
                 ],
               ),
