@@ -45,6 +45,9 @@ class UserProvider with ChangeNotifier {
   double get bmi => _bmi;
   double get bodyFat => _bodyFat;
 
+  // --- USER GUIDE STATE ---
+  bool hasSeenUserGuide = true; // Starts as true to prevent pre-load flickering
+
   // --- DIARY STATE MANAGEMENT ---
   List<LogEntry> todayMeals = [];
   List<LogEntry> todayExercises = [];
@@ -206,12 +209,25 @@ class UserProvider with ChangeNotifier {
         neck = (data['neck'] ?? 0).toDouble(); hip = (data['hip'] ?? 0).toDouble();
         waist = (gender.toLowerCase() == 'male') ? (data['abdomen'] ?? data['waist'] ?? 0).toDouble() : (data['waist'] ?? data['abdomen'] ?? 0).toDouble();
 
+        hasSeenUserGuide = data['hasSeenUserGuide'] ?? false;
+
         calculateMetrics();
         notifyListeners();
         await fetchLogsForDate(DateTime.now());
       }
     } catch (e) {
       debugPrint("Error fetching user data: $e");
+    }
+  }
+
+  Future<void> completeUserGuide() async {
+    hasSeenUserGuide = true;
+    notifyListeners();
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+        'hasSeenUserGuide': true,
+      });
     }
   }
 

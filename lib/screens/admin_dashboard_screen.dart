@@ -8,7 +8,8 @@ class AdminDashboardScreen extends StatefulWidget {
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
 }
 
-class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   final _formKey = GlobalKey<FormState>();
 
   // Input Controllers
@@ -36,11 +37,348 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
   void dispose() {
+    _tabController.dispose();
     _titleCtrl.dispose(); _descCtrl.dispose(); _calCtrl.dispose(); _durCtrl.dispose();
     _startButtonTextCtrl.dispose();
     for (var ctrl in _exerciseCtrls) { ctrl.dispose(); }
     super.dispose();
+  }
+
+  void _showAdminGuide(BuildContext context) {
+    int currentStep = 0;
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.01),
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: StatefulBuilder(
+            builder: (context, setDialogState) {
+              final List<Map<String, dynamic>> steps = [
+                {
+                  'title': "Welcome, Administrator!",
+                  'description': "This is the control panel of Smart Calorie Burner. Here you manage the workout database, customize exercise rules, and control the smart matchmaking tags. Let's take a quick 1-minute tour of your administrative tools!",
+                  'icon': Icons.admin_panel_settings,
+                  'color': Colors.deepPurple,
+                  'tabIndex': null,
+                  'spotlight': null,
+                },
+                {
+                  'title': "Manage Workout Pool",
+                  'description': "In the 'Manage Routines' tab, you see all active workouts in the system in real time. You can edit any routine's details (duration, calories, exercises, tags) or delete outdated workouts instantly.",
+                  'icon': Icons.list_alt,
+                  'color': Colors.blue,
+                  'tabIndex': 0,
+                  'spotlight': 'manage_routines_tab',
+                },
+                {
+                  'title': "Dynamic Add Routine Engine",
+                  'description': "Use the 'Add Routine' tab to deploy new workouts. For Strength, dynamically add any number of custom exercises. For Cardio, customize display toggles (like showing/hiding live speed) and the custom action button text!",
+                  'icon': Icons.add_to_photos,
+                  'color': Colors.green,
+                  'tabIndex': 1,
+                  'spotlight': 'add_form_fields',
+                },
+                {
+                  'title': "Smart Matching Engine Tags",
+                  'description': "Every routine must be tagged with matching Lifestyle levels and BMI categories. Our matching algorithm reads the user's active profile and ranks routines displaying 'Perfect Match' tags for optimal user alignment!",
+                  'icon': Icons.psychology,
+                  'color': Colors.amber,
+                  'tabIndex': 1,
+                  'spotlight': 'matching_chips',
+                },
+                {
+                  'title': "Database Diagnostics & Reset",
+                  'description': "Need a clean slate? The 'Reset to Default' button deletes all custom workout overrides in Firestore and re-seeds the database with the 5 optimized baseline workouts (Push, Pull, Legs, Running, and Brisk Walking).",
+                  'icon': Icons.settings_backup_restore,
+                  'color': Colors.redAccent,
+                  'tabIndex': 0,
+                  'spotlight': 'reset_button',
+                },
+                {
+                  'title': "Administrative Security",
+                  'description': "Access to this dashboard is fully secured. It is hidden behind the secret backdoor entry: long-pressing the logo on the login page and entering the master passcode ('admin123').",
+                  'icon': Icons.security,
+                  'color': Colors.teal,
+                  'tabIndex': null,
+                  'spotlight': 'help_button',
+                },
+              ];
+
+              final size = MediaQuery.of(context).size;
+              Offset? spotlightCenter;
+              double? spotlightRadius;
+              Rect? spotlightRect;
+              String? arrowDirection;
+              double? arrowX;
+              double? arrowY;
+              double? dialogTop;
+              double? dialogBottom;
+
+              final step = steps[currentStep];
+              final spotlight = step['spotlight'];
+
+              if (spotlight == 'manage_routines_tab') {
+                spotlightRect = Rect.fromLTWH(10, 82, size.width / 2 - 20, 68);
+              } else if (spotlight == 'add_form_fields') {
+                spotlightRect = Rect.fromLTWH(16, 115, size.width - 32, 145);
+              } else if (spotlight == 'matching_chips') {
+                spotlightRect = Rect.fromLTWH(16, 430, size.width - 32, 200);
+              } else if (spotlight == 'reset_button') {
+                spotlightRect = Rect.fromLTWH(size.width - 190, 200, 172, 48);
+              } else if (spotlight == 'help_button') {
+                spotlightCenter = Offset(size.width - 28, 52);
+                spotlightRadius = 26;
+                arrowDirection = 'up';
+                arrowX = size.width - 28;
+                arrowY = 82;
+                dialogTop = 135;
+              }
+
+              // Determine arrow and dialog positioning dynamically based on spotlightRect
+              if (spotlightRect != null) {
+                arrowX = spotlight == 'reset_button' ? size.width - 105 : size.width / 2;
+                if (spotlightRect.bottom > 400) {
+                  // Element is low on screen, place dialog ABOVE spotlight
+                  arrowDirection = 'down';
+                  arrowY = spotlightRect.top - 45;
+                  dialogBottom = size.height - spotlightRect.top + 15;
+                } else {
+                  // Element is high on screen, place dialog BELOW spotlight
+                  arrowDirection = 'up';
+                  arrowY = spotlightRect.bottom + 5;
+                  dialogTop = spotlightRect.bottom + 50;
+                }
+              }
+
+              return Stack(
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: AdminSpotlightPainter(
+                        center: spotlightCenter,
+                        radius: spotlightRadius,
+                        rect: spotlightRect,
+                      ),
+                    ),
+                  ),
+                  if (arrowDirection != null && arrowX != null && arrowY != null)
+                    Positioned(
+                      left: arrowX - 20,
+                      top: arrowY,
+                      child: AdminGamingPulsingArrow(
+                        icon: arrowDirection == 'up'
+                            ? Icons.keyboard_double_arrow_up
+                            : Icons.keyboard_double_arrow_down,
+                      ),
+                    ),
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    top: spotlight == null
+                        ? (size.height / 2 - 180)
+                        : dialogTop,
+                    bottom: dialogBottom,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFF1E1B4B),
+                              Color(0xFF311042),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: Colors.amberAccent, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.amberAccent.withOpacity(0.35),
+                              blurRadius: 20,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amberAccent.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.amberAccent.withOpacity(0.5)),
+                                  ),
+                                  child: Text(
+                                    "ADMIN QUEST: ${currentStep + 1} / ${steps.length}",
+                                    style: const TextStyle(
+                                      color: Colors.amberAccent,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                ),
+                                if (currentStep < steps.length - 1)
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.pop(dialogContext);
+                                    },
+                                    child: const Text(
+                                      "SKIP QUEST",
+                                      style: TextStyle(
+                                        color: Colors.white60,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                        letterSpacing: 1.0,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: (step['color'] as Color).withOpacity(0.2),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: step['color'] as Color, width: 1.5),
+                                  ),
+                                  child: Icon(
+                                    step['icon'] as IconData,
+                                    size: 26,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Text(
+                                    step['title'] as String,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 120),
+                              child: SingleChildScrollView(
+                                physics: const BouncingScrollPhysics(),
+                                child: Text(
+                                  step['description'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Color(0xFFE2E8F0),
+                                    height: 1.55,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(steps.length, (index) {
+                                return AnimatedContainer(
+                                  duration: const Duration(milliseconds: 250),
+                                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                                  width: currentStep == index ? 16 : 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: currentStep == index ? Colors.amberAccent : Colors.white30,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                );
+                              }),
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                if (currentStep > 0)
+                                  OutlinedButton(
+                                    onPressed: () {
+                                      setDialogState(() {
+                                        currentStep--;
+                                        int? targetTab = steps[currentStep]['tabIndex'] as int?;
+                                        if (targetTab != null) {
+                                          _tabController.animateTo(targetTab);
+                                        }
+                                      });
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                                      side: const BorderSide(color: Colors.white30),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    child: const Text(
+                                      "BACK",
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                                    ),
+                                  )
+                                else
+                                  const SizedBox.shrink(),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    if (currentStep < steps.length - 1) {
+                                      setDialogState(() {
+                                        currentStep++;
+                                        int? targetTab = steps[currentStep]['tabIndex'] as int?;
+                                        if (targetTab != null) {
+                                          _tabController.animateTo(targetTab);
+                                        }
+                                      });
+                                    } else {
+                                      Navigator.pop(dialogContext);
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.amberAccent,
+                                    foregroundColor: Colors.black,
+                                    padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    elevation: 4,
+                                  ),
+                                  child: Text(
+                                    currentStep == steps.length - 1 ? "GOT IT!" : "NEXT",
+                                    style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 
   void _addRoutine() async {
@@ -538,28 +876,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: Colors.grey[50],
-        appBar: AppBar(
-          title: const Text("Admin Dashboard", style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white,
-          bottom: const TabBar(
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white60,
-            indicatorColor: Colors.orange,
-            tabs: [
-              Tab(icon: Icon(Icons.list), text: "Manage Routines"),
-              Tab(icon: Icon(Icons.add_box), text: "Add Routine"),
-            ],
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        title: const Text("Admin Dashboard", style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => _showAdminGuide(context),
+            tooltip: "Admin System Guide",
           ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          indicatorColor: Colors.orange,
+          tabs: const [
+            Tab(icon: Icon(Icons.list), text: "Manage Routines"),
+            Tab(icon: Icon(Icons.add_box), text: "Add Routine"),
+          ],
         ),
-        body: _isLoading 
-          ? const Center(child: CircularProgressIndicator()) 
-          : TabBarView(
-              children: [
+      ),
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator()) 
+        : TabBarView(
+            controller: _tabController,
+            children: [
                 // TAB 1 (MANAGE ROUTINES): Dynamic routines drawn exclusively from Firestore
                 StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('routines').orderBy('created_at', descending: true).snapshots(),
@@ -768,8 +1113,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ],
             ),
-      ),
-    );
+      );
   }
 
   Widget _buildTextField(TextEditingController ctrl, String label, TextInputType type, {int maxLines = 1}) {
@@ -777,6 +1121,110 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       controller: ctrl, keyboardType: type, maxLines: maxLines,
       decoration: InputDecoration(labelText: label, border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)), filled: true, fillColor: Colors.white),
       validator: (value) => value!.isEmpty ? "Required" : null,
+    );
+  }
+}
+
+// --- ADMIN GAMING SPOTLIGHT TUTORIAL MASK CUTOUT PAINTER ---
+class AdminSpotlightPainter extends CustomPainter {
+  final Offset? center;
+  final double? radius;
+  final Rect? rect;
+  final double cornerRadius;
+
+  AdminSpotlightPainter({this.center, this.radius, this.rect, this.cornerRadius = 16});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.black.withOpacity(0.78);
+
+    if (center == null && rect == null) {
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+      return;
+    }
+
+    canvas.saveLayer(Rect.fromLTWH(0, 0, size.width, size.height), Paint());
+    
+    // Draw dimming background overlay
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+
+    // Clear target spotlight region using BlendMode.clear
+    final clearPaint = Paint()..blendMode = BlendMode.clear;
+    if (center != null && radius != null) {
+      canvas.drawCircle(center!, radius!, clearPaint);
+    } else if (rect != null) {
+      canvas.drawRRect(RRect.fromRectAndRadius(rect!, Radius.circular(cornerRadius)), clearPaint);
+    }
+
+    canvas.restore();
+
+    // Draw glowing neon gold outline around the spotlight target region
+    final borderPaint = Paint()
+      ..color = Colors.amberAccent
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    
+    if (center != null && radius != null) {
+      canvas.drawCircle(center!, radius!, borderPaint);
+    } else if (rect != null) {
+      canvas.drawRRect(RRect.fromRectAndRadius(rect!, Radius.circular(cornerRadius)), borderPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant AdminSpotlightPainter oldDelegate) {
+    return oldDelegate.center != center || oldDelegate.radius != radius || oldDelegate.rect != rect;
+  }
+}
+
+// --- ADMIN GAMING-STYLE LOOPING PULSING ARROW INDICATOR ---
+class AdminGamingPulsingArrow extends StatefulWidget {
+  final IconData icon;
+  const AdminGamingPulsingArrow({super.key, required this.icon});
+
+  @override
+  State<AdminGamingPulsingArrow> createState() => _AdminGamingPulsingArrowState();
+}
+
+class _AdminGamingPulsingArrowState extends State<AdminGamingPulsingArrow> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..repeat(reverse: true);
+    _animation = Tween<double>(begin: 0.0, end: 12.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _animation.value),
+          child: Icon(
+            widget.icon,
+            color: Colors.amberAccent,
+            size: 40,
+            shadows: [
+              Shadow(color: Colors.amberAccent.withOpacity(0.8), blurRadius: 12),
+            ],
+          ),
+        );
+      },
     );
   }
 }
