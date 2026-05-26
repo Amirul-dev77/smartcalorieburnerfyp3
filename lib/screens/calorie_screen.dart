@@ -176,116 +176,118 @@ class _CalorieScreenState extends State<CalorieScreen> {
         elevation: 0,
         foregroundColor: Colors.black,
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Today", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                Text(todayDate, style: TextStyle(color: Colors.grey.shade600)),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // --- Purple Dashboard Card ---
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF9D50BB), Color(0xFF6E48AA)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: const Color(0xFF9D50BB).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text("Calories Remaining", style: TextStyle(color: Colors.white70, fontSize: 14)),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                        child: Text(getGoalText(userProvider.goal), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                      ),
-                    ],
+                  const Text("Today", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  Text(todayDate, style: TextStyle(color: Colors.grey.shade600)),
+                ],
+              ),
+              const SizedBox(height: 20),
+  
+              // --- Purple Dashboard Card ---
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [Color(0xFF9D50BB), Color(0xFF6E48AA)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [BoxShadow(color: const Color(0xFF9D50BB).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Calories Remaining", style: TextStyle(color: Colors.white70, fontSize: 14)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                          child: Text(getGoalText(userProvider.goal), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text("${userProvider.remainingCalories}", style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                          child: const Icon(Icons.local_fire_department, color: Colors.white, size: 32),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const Divider(color: Colors.white38, height: 1),
+                    const SizedBox(height: 15),
+  
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(child: _buildStatColumn("Base BMR", "${bmr.round()} kcal", CrossAxisAlignment.start)),
+                        Container(width: 1, height: 30, color: Colors.white38),
+                        Expanded(child: _buildStatColumn("TDEE", "${tdee.round()} kcal", CrossAxisAlignment.center)),
+                        Container(width: 1, height: 30, color: Colors.white38),
+                        Expanded(child: _buildStatColumn("Target", "${userProvider.calculatedDailyGoal} kcal", CrossAxisAlignment.end)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 30),
+  
+              // --- Action Buttons ---
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildActionButton(Icons.keyboard, "Type", Colors.orange, _showTypeFoodDialog),
+                  _buildActionButton(Icons.qr_code_scanner, "Scan", Colors.blue, _scanBarcodeWithFoodFacts),
+                  _buildActionButton(Icons.menu_book, "Diary", Colors.purple, () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const DiaryScreen()));
+                  }),
+                ],
+              ),
+              const SizedBox(height: 30),
+  
+              // --- TODAY'S SUMMARY ---
+              const Text("Today's Summary", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 15),
+  
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildSummaryCard(
+                        "Eaten",
+                        "${userProvider.totalFoodConsumed} kcal",
+                        Icons.restaurant,
+                        Colors.orange
+                    ),
                   ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text("${userProvider.remainingCalories}", style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                        child: const Icon(Icons.local_fire_department, color: Colors.white, size: 32),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const Divider(color: Colors.white38, height: 1),
-                  const SizedBox(height: 15),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(child: _buildStatColumn("Base BMR", "${bmr.round()} kcal", CrossAxisAlignment.start)),
-                      Container(width: 1, height: 30, color: Colors.white38),
-                      Expanded(child: _buildStatColumn("TDEE", "${tdee.round()} kcal", CrossAxisAlignment.center)),
-                      Container(width: 1, height: 30, color: Colors.white38),
-                      Expanded(child: _buildStatColumn("Target", "${userProvider.calculatedDailyGoal} kcal", CrossAxisAlignment.end)),
-                    ],
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: _buildSummaryCard(
+                        "Burned",
+                        "${userProvider.totalExerciseBurned} kcal",
+                        Icons.fitness_center,
+                        Colors.purple
+                    ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 30),
-
-            // --- Action Buttons ---
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildActionButton(Icons.keyboard, "Type", Colors.orange, _showTypeFoodDialog),
-                _buildActionButton(Icons.qr_code_scanner, "Scan", Colors.blue, _scanBarcodeWithFoodFacts),
-                _buildActionButton(Icons.menu_book, "Diary", Colors.purple, () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const DiaryScreen()));
-                }),
-              ],
-            ),
-            const SizedBox(height: 30),
-
-            // --- TODAY'S SUMMARY ---
-            const Text("Today's Summary", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 15),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _buildSummaryCard(
-                      "Eaten",
-                      "${userProvider.totalFoodConsumed} kcal",
-                      Icons.restaurant,
-                      Colors.orange
-                  ),
-                ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: _buildSummaryCard(
-                      "Burned",
-                      "${userProvider.totalExerciseBurned} kcal",
-                      Icons.fitness_center,
-                      Colors.purple
-                  ),
-                ),
-              ],
-            ),
-
-            const Spacer(),
-          ],
+  
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
