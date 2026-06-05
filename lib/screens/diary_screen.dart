@@ -130,6 +130,33 @@ class _DiaryScreenState extends State<DiaryScreen> {
                       _buildMathColumn("Exercise", "${userProvider.totalExerciseBurned}", Colors.purple),
                     ],
                   ),
+                  if (remaining < 0) ...[
+                    const Divider(height: 30),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Row(
+                        children: const [
+                          Icon(Icons.favorite, color: Colors.orangeAccent),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              "It's completely okay to go over your calorie limit! Fitness is a long-term journey, not just a single day. Be kind to yourself and keep going! 💛",
+                              style: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 13,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -201,7 +228,14 @@ class _DiaryScreenState extends State<DiaryScreen> {
             // --- 3. MEALS LIST ---
             _buildSectionHeader("Meals", "${userProvider.totalFoodConsumed} kcal", _showAddMealDialog),
             if (userProvider.todayMeals.isEmpty) const Text("No meals logged yet.", style: TextStyle(color: Colors.grey)),
-            ...userProvider.todayMeals.map((meal) => _buildLogCard(Icons.restaurant, meal.title, meal.subtitle, "${meal.calories} kcal", Colors.orange)).toList(),
+            ...userProvider.todayMeals.map((meal) => _buildLogCard(
+              Icons.restaurant,
+              meal.title,
+              meal.subtitle,
+              "${meal.calories} kcal",
+              Colors.orange,
+              onDelete: () => _confirmDelete(context, meal.id, meal.subtitle),
+            )).toList(),
 
             const SizedBox(height: 30),
 
@@ -210,7 +244,11 @@ class _DiaryScreenState extends State<DiaryScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const WorkoutScreen()),
-              );
+              ).then((_) {
+                if (mounted) {
+                  Provider.of<UserProvider>(context, listen: false).fetchLogsForDate(selectedDate);
+                }
+              });
             }),
             if (userProvider.todayExercises.isEmpty) const Text("No exercises logged yet.", style: TextStyle(color: Colors.grey)),
 
@@ -225,6 +263,31 @@ class _DiaryScreenState extends State<DiaryScreen> {
   }
 
   // --- HELPER WIDGETS ---
+
+  void _confirmDelete(BuildContext context, String logId, String title) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Delete Log?"),
+        content: Text("Are you sure you want to delete '$title'?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await Provider.of<UserProvider>(context, listen: false)
+                  .deleteLogFromFirebase(logId, selectedDate);
+            },
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildMathColumn(String label, String value, Color valueColor) {
     return Column(
@@ -254,7 +317,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
     );
   }
 
-  Widget _buildLogCard(IconData icon, String title, String subtitle, String trailing, Color iconColor) {
+  Widget _buildLogCard(IconData icon, String title, String subtitle, String trailing, Color iconColor, {VoidCallback? onDelete}) {
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
@@ -268,7 +331,21 @@ class _DiaryScreenState extends State<DiaryScreen> {
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(subtitle, style: const TextStyle(color: Colors.black54)),
-        trailing: Text(trailing, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(trailing, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            if (onDelete != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                constraints: const BoxConstraints(),
+                padding: EdgeInsets.zero,
+                onPressed: onDelete,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -314,7 +391,19 @@ class _DiaryScreenState extends State<DiaryScreen> {
           child: Wrap(spacing: 8, runSpacing: 8, children: metricChips),
         )
             : const Text("Workout Completed", style: TextStyle(color: Colors.black54)),
-        trailing: Text("${ex.calories} kcal", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("${ex.calories} kcal", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+              constraints: const BoxConstraints(),
+              padding: EdgeInsets.zero,
+              onPressed: () => _confirmDelete(context, ex.id, displayTitle),
+            ),
+          ],
+        ),
       ),
     );
   }

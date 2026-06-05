@@ -5,6 +5,7 @@ import 'dart:math';
 
 // --- DATA MODEL FOR DIARY ENTRIES ---
 class LogEntry {
+  final String id;
   final String title;
   final String subtitle;
   final int calories;
@@ -14,6 +15,7 @@ class LogEntry {
   final DateTime timestamp;
 
   LogEntry({
+    required this.id,
     required this.title,
     required this.subtitle,
     required this.calories,
@@ -59,13 +61,14 @@ class UserProvider with ChangeNotifier {
 
   // --- LOCAL ONLY ADDS ---
   void addMeal(String name, int calories) {
-    todayMeals.insert(0, LogEntry(title: "Food", subtitle: name, calories: calories, timestamp: DateTime.now()));
+    todayMeals.insert(0, LogEntry(id: '', title: "Food", subtitle: name, calories: calories, timestamp: DateTime.now()));
     notifyListeners();
   }
 
   // UPDATED: Now accepts optional distance and steps
   void addExercise(String name, int calories, int volume, {double distance = 0.0, int steps = 0}) {
     todayExercises.insert(0, LogEntry(
+        id: '',
         title: "Workout",
         subtitle: name,
         calories: calories,
@@ -115,9 +118,10 @@ class UserProvider with ChangeNotifier {
         DateTime time = data['timestamp'] != null ? (data['timestamp'] as Timestamp).toDate() : DateTime.now();
 
         if (type == 'food') {
-          todayMeals.add(LogEntry(title: "Food", subtitle: title, calories: calories, timestamp: time));
+          todayMeals.add(LogEntry(id: doc.id, title: "Food", subtitle: title, calories: calories, timestamp: time));
         } else {
           todayExercises.add(LogEntry(
+              id: doc.id,
               title: "Workout",
               subtitle: title,
               calories: calories,
@@ -164,6 +168,23 @@ class UserProvider with ChangeNotifier {
         'timestamp': timestampToSave,
       });
       await fetchLogsForDate(logDate);
+    }
+  }
+
+  Future<void> deleteLogFromFirebase(String logId, DateTime logDate) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null && logId.isNotEmpty) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('calorie_logs')
+            .doc(logId)
+            .delete();
+        await fetchLogsForDate(logDate);
+      } catch (e) {
+        debugPrint("Error deleting log: $e");
+      }
     }
   }
 

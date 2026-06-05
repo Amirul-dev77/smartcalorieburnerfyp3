@@ -227,6 +227,40 @@ class _CalorieScreenState extends State<CalorieScreen> {
                         ),
                       ],
                     ),
+                    if (userProvider.remainingCalories < 0) ...[
+                      const SizedBox(height: 15),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3CD), // Warm golden-yellow background
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFFFEBAA), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: const [
+                            Icon(Icons.star, color: Color(0xFF856404), size: 18),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "It's okay to indulge! You're doing amazing, keep moving! 💛",
+                                style: TextStyle(
+                                  color: Color(0xFF856404), // High contrast readable warm text
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     const Divider(color: Colors.white38, height: 1),
                     const SizedBox(height: 15),
